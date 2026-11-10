@@ -966,6 +966,7 @@ $last = (New-Object -ComObject Microsoft.Update.AutoUpdate).Results.LastInstalla
 if ($last) { $o.updateDays = [int]((Get-Date) - $last).TotalDays }
 $o.rdpDenied = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server').fDenyTSConnections
 $o.smartscreen = [string](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer').SmartScreenEnabled
+$o.smartscreenPolicy = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System').EnableSmartScreen
 $o | ConvertTo-Json -Depth 4 -Compress
 "#;
 
@@ -1013,10 +1014,13 @@ $o | ConvertTo-Json -Depth 4 -Compress
             None => check("updates", "unknown", None),
         });
 
+        // SmartScreen is on unless someone switched it off: Windows only writes
+        // the value when the setting is changed, or a policy forces it.
+        let by_policy_off = info.get("smartscreenPolicy").and_then(num) == Some(0);
         out.push(match info.get("smartscreen").and_then(|s| s.as_str()) {
-            Some(s) if s.eq_ignore_ascii_case("off") => check("smartScreen", "warn", None),
-            Some(s) if !s.is_empty() => check("smartScreen", "ok", None),
-            _ => check("smartScreen", "unknown", None),
+            Some(s) if s.eq_ignore_ascii_case("off") || by_policy_off => check("smartScreen", "warn", None),
+            Some(_) => check("smartScreen", "ok", None),
+            None => check("smartScreen", "unknown", None),
         });
 
         out.push(match info.get("rdpDenied").and_then(num) {

@@ -352,6 +352,9 @@ fn main() {
             for i in report.startup.iter().take(6) {
                 println!("  startup {} [{} / {}] {}", i.name, i.scope, i.kind, i.flags.join(","));
             }
+            for u in &report.unwanted {
+                println!("  unwanted {} [{} / {}]", u.name, u.reason, u.removal);
+            }
             assert!(report.processes > 0, "no processes listed");
             assert!(!report.security.is_empty(), "no security checks");
             println!("selftest ok");
