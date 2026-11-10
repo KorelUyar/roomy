@@ -5,6 +5,8 @@
 //! is also what the CI smoke test runs on macOS and Windows.
 
 pub mod apps;
+pub mod bloat;
+pub mod bloat_db;
 pub mod browse;
 pub mod cleanup;
 pub mod delete;

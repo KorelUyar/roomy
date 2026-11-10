@@ -34,6 +34,7 @@ const PAGE = 150;
 
 export function FilesView() {
   const version = useStore((s) => s.version);
+  const diskRoot = useStore((s) => s.diskRoot);
   const scanned = useStore((s) => s.overview !== null);
   const selection = useStore((s) => s.selection);
   const platform = useStore((s) => s.meta?.platform);
@@ -45,11 +46,12 @@ export function FilesView() {
   useEffect(() => {
     if (!scanned) return;
     let alive = true;
-    void api.largeFiles(0, 3000).then((list) => alive && setFiles(list));
+    setFiles(null);
+    void api.largeFiles(diskRoot, 0, 3000).then((list) => alive && setFiles(list));
     return () => {
       alive = false;
     };
-  }, [version, scanned]);
+  }, [version, scanned, diskRoot]);
 
   const base = useMemo(() => (files ?? []).filter((f) => appData || !f.appData), [files, appData]);
   const present = useMemo(() => new Set(base.map((f) => bucket(f.kind))), [base]);

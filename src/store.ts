@@ -8,6 +8,7 @@ import {
   TRASH_TOKEN,
   type AppInfo,
   type AppMeta,
+  type BloatReport,
   type CleanGroup,
   type DeleteMode,
   type DeleteOutcome,
@@ -18,9 +19,11 @@ import {
   type ScanStatus,
 } from "./api";
 import { configureFormat, formatBytes } from "./format";
-import { setLocale, t, tn } from "./i18n";
+import { initLanguage, setLanguage, t, tn, type Lang } from "./i18n";
 
-export type View = "overview" | "apps" | "files" | "folders" | "cleanup";
+export type View = "overview" | "apps" | "files" | "folders" | "cleanup" | "bloat";
+
+const IDLE: ScanStatus = { state: "idle", files: 0, bytes: 0, current: "" };
 
 /** Something the user ticked, from any tab. */
 export interface SelItem {
@@ -47,10 +50,21 @@ export interface Toast {
 
 export interface State {
   meta: AppMeta | null;
+  lang: Lang;
+  /** Every disk of this computer, the system disk first. */
+  disks: DiskInfo[];
+  /** Mount point of the disk the user is looking at. */
+  diskRoot: string;
+  /** Scan progress and result per disk (keyed by mount point). */
+  scans: Record<string, ScanStatus>;
+  overviews: Record<string, Overview>;
+  /** The three below always describe the disk in `diskRoot`. */
   disk: DiskInfo | null;
   view: View;
   scan: ScanStatus;
   overview: Overview | null;
+  bloat: BloatReport | null;
+  bloatBusy: boolean;
   apps: AppInfo[] | null;
   cleanup: CleanGroup[] | null;
   /** Bumps whenever the disk changed, so lists know to reload. */
@@ -66,10 +80,17 @@ export interface State {
 
 let state: State = {
   meta: null,
+  lang: "en",
+  disks: [],
+  diskRoot: "",
+  scans: {},
+  overviews: {},
   disk: null,
   view: "overview",
-  scan: { state: "idle", files: 0, bytes: 0, current: "" },
+  scan: IDLE,
   overview: null,
+  bloat: null,
+  bloatBusy: false,
   apps: null,
   cleanup: null,
   version: 0,
@@ -96,6 +117,12 @@ export function getState(): State {
 
 export function setState(patch: Partial<State>) {
   state = { ...state, ...patch };
+  // Keep the "current disk" fields in step with the selection.
+  if ("diskRoot" in patch || "scans" in patch || "overviews" in patch || "disks" in patch) {
+    state.scan = state.scans[state.diskRoot] ?? IDLE;
+    state.overview = state.overviews[state.diskRoot] ?? null;
+    state.disk = state.overviews[state.diskRoot]?.disk ?? state.disks.find((d) => d.root === state.diskRoot) ?? null;
+  }
   for (const listener of listeners) listener();
 }
 
@@ -112,7 +139,7 @@ export function useStore<T>(selector: (s: State) => T): T {
 // Start-up and scanning
 // ---------------------------------------------------------------------------
 
-let pollTimer: number | undefined;
+const pollers = new Map<string, number>();
 
 export async function init() {
   let meta = await api.appInfo();
@@ -120,14 +147,21 @@ export async function init() {
     switchToDemoData(meta);
     meta = { ...(await api.appInfo()), shotsDir: meta.shotsDir };
   }
-  // The web view knows the system language on both macOS and Windows.
-  setLocale(navigator.language || meta.locale);
-  configureFormat(meta.platform, meta.home);
+  const lang = initLanguage();
+  configureFormat(meta.platform, meta.home, lang);
   document.documentElement.dataset.platform = meta.platform;
-  setState({ meta, folderPath: meta.home });
-  void api.diskInfo().then((disk) => setState({ disk }));
+  const disks = await api.listDisks().catch(() => []);
+  const diskRoot = disks.find((d) => d.system)?.root ?? meta.root;
+  setState({ meta, lang, disks, diskRoot, folderPath: meta.home });
   void refreshLists();
-  await rescan();
+  await scanDisk(diskRoot);
+}
+
+/** English or German. Everything on screen is rebuilt in the new language. */
+export function chooseLanguage(lang: Lang) {
+  setLanguage(lang);
+  if (state.meta) configureFormat(state.meta.platform, state.meta.home, lang);
+  setState({ lang });
 }
 
 /** Apps and cleanup suggestions do not need the full scan. */
@@ -136,26 +170,94 @@ export async function refreshLists() {
   setState({ apps, cleanup });
 }
 
-export async function rescan() {
-  if (state.scan.state === "scanning") return;
-  setState({ scan: { state: "scanning", files: 0, bytes: 0, current: "" } });
-  await api.startScan();
-  window.clearInterval(pollTimer);
-  pollTimer = window.setInterval(async () => {
-    const scan = await api.scanStatus();
-    if (scan.state === "scanning") {
-      setState({ scan });
-      return;
-    }
-    window.clearInterval(pollTimer);
-    const overview = await api.overview();
-    setState({ scan, overview, disk: overview?.disk ?? state.disk, version: state.version + 1 });
-  }, 110);
+async function refreshDisks() {
+  const disks = await api.listDisks().catch(() => state.disks);
+  // A disk that was unplugged takes the selection back to the system disk.
+  const diskRoot = disks.some((d) => d.root === state.diskRoot) ? state.diskRoot : (disks.find((d) => d.system)?.root ?? state.diskRoot);
+  setState({ disks, diskRoot });
+}
+
+/** Scans one disk (again). Progress lands in `scans[root]`. */
+export async function scanDisk(root: string) {
+  if (state.scans[root]?.state === "scanning") return;
+  setState({ scans: { ...state.scans, [root]: { state: "scanning", files: 0, bytes: 0, current: "" } } });
+  try {
+    await api.startScan(root);
+  } catch {
+    setState({ scans: { ...state.scans, [root]: IDLE } });
+    return;
+  }
+  window.clearInterval(pollers.get(root));
+  pollers.set(
+    root,
+    window.setInterval(async () => {
+      const scan = await api.scanStatus(root).catch(() => IDLE);
+      if (scan.state === "scanning") {
+        setState({ scans: { ...state.scans, [root]: scan } });
+        return;
+      }
+      window.clearInterval(pollers.get(root));
+      pollers.delete(root);
+      const overview = await api.overview(root).catch(() => null);
+      const overviews = { ...state.overviews };
+      if (overview) overviews[root] = overview;
+      setState({ scans: { ...state.scans, [root]: scan }, overviews, version: state.version + 1 });
+      void refreshDisks();
+    }, 110),
+  );
+}
+
+/** Scans the disk the user is looking at again. */
+export function rescan() {
+  return scanDisk(state.diskRoot);
+}
+
+/** Shows another disk. It is scanned the first time it is opened. */
+export function selectDisk(root: string) {
+  if (root === state.diskRoot) return;
+  const disk = state.disks.find((d) => d.root === root);
+  setState({ diskRoot: root, folderPath: disk?.system && state.meta ? state.meta.home : root, view: state.view === "apps" || state.view === "cleanup" || state.view === "bloat" ? "overview" : state.view });
+  if (!state.scans[root] || state.scans[root].state === "idle") void scanDisk(root);
 }
 
 async function refreshAfterChange() {
-  const [overview] = await Promise.all([api.overview().catch(() => state.overview), refreshLists()]);
-  setState({ overview, disk: overview?.disk ?? state.disk, version: state.version + 1 });
+  const roots = Object.keys(state.overviews);
+  const fresh = await Promise.all(roots.map((root) => api.overview(root).catch(() => null)));
+  const overviews = { ...state.overviews };
+  roots.forEach((root, i) => {
+    if (fresh[i]) overviews[root] = fresh[i]!;
+  });
+  await Promise.all([refreshLists(), refreshDisks()]);
+  setState({ overviews, version: state.version + 1 });
+}
+
+// ---------------------------------------------------------------------------
+// Bloat Scanner
+// ---------------------------------------------------------------------------
+
+export async function scanBloat() {
+  if (state.bloatBusy) return;
+  setState({ bloatBusy: true });
+  const started = Date.now();
+  try {
+    const bloat = await api.bloatScan();
+    // Long enough to see what is being looked at.
+    await new Promise((r) => setTimeout(r, Math.max(0, 1400 - (Date.now() - started))));
+    setState({ bloat });
+  } catch (error) {
+    toast(t("toast.error", { error: String(error) }), "warn");
+  } finally {
+    setState({ bloatBusy: false });
+  }
+}
+
+/** After an action in the Bloat Scanner: look again, quietly. */
+export async function refreshBloat() {
+  try {
+    setState({ bloat: await api.bloatScan() });
+  } catch {
+    /* keep what is shown */
+  }
 }
 
 // ---------------------------------------------------------------------------

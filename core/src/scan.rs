@@ -305,7 +305,7 @@ pub fn scan(root: &Path, progress: &Progress) -> ScanData {
         }
     }
     #[cfg(target_os = "macos")]
-    {
+    if root == Path::new("/") {
         use std::os::unix::fs::MetadataExt;
         // The read-only system volume and the data volume are two devices that
         // macOS presents as one disk. `/System/Volumes/Data` is the same data
@@ -320,6 +320,7 @@ pub fn scan(root: &Path, progress: &Progress) -> ScanData {
                 }
             }
         }
+        // Other disks are scanned on their own (see `platform::list_disks`).
         skip.push(PathBuf::from("/System/Volumes"));
         skip.push(PathBuf::from("/Volumes"));
         skip.push(PathBuf::from("/dev"));

@@ -17,10 +17,15 @@ export interface AppMeta {
 }
 
 export interface DiskInfo {
+  /** Mount point: "/", "/Volumes/Backup", "C:\\", "D:\\". */
+  root: string;
   name: string;
   total: number;
   free: number;
   used: number;
+  /** The disk the operating system runs from. */
+  system: boolean;
+  removable: boolean;
 }
 
 export interface ScanStatus {
@@ -68,10 +73,13 @@ export type CategoryId =
   | "appData"
   | "otherHome"
   | "otherUsers"
-  | "system";
+  | "system"
+  /** A top-level folder of a disk that is not the system disk (see `name`). */
+  | "folder";
 
 export interface Category {
   id: CategoryId;
+  name: string | null;
   size: number;
   path: string | null;
 }
@@ -159,6 +167,64 @@ export interface TrashInfo {
   items: number;
 }
 
+export interface Unwanted {
+  id: string;
+  name: string;
+  reason: "adware" | "pup" | "bundled" | "promo";
+  path: string;
+  icon: string;
+  size: number;
+  running: boolean;
+  pids: number[];
+  removal: "trash" | "uninstaller" | "package" | "none";
+  target: string;
+}
+
+export type StartupFlag = "leftover" | "unsigned" | "suspicious" | "unwanted";
+
+export interface StartupItem {
+  id: string;
+  name: string;
+  label: string;
+  program: string;
+  source: string;
+  scope: "user" | "system";
+  kind: "launchAgent" | "launchDaemon" | "backgroundItem" | "runKey" | "startupFolder";
+  vendor: string | null;
+  running: boolean;
+  enabled: boolean;
+  flags: StartupFlag[];
+  canDisable: boolean;
+  icon: string;
+}
+
+export type SecurityId =
+  | "diskEncryption"
+  | "firewall"
+  | "gatekeeper"
+  | "sip"
+  | "updates"
+  | "autoLogin"
+  | "remoteLogin"
+  | "antivirus"
+  | "uac"
+  | "smartScreen"
+  | "remoteDesktop";
+
+export interface SecurityCheck {
+  id: SecurityId;
+  status: "ok" | "warn" | "info" | "unknown";
+  detail: string | null;
+}
+
+export interface BloatReport {
+  unwanted: Unwanted[];
+  startup: StartupItem[];
+  security: SecurityCheck[];
+  processes: number;
+  durationMs: number;
+}
+
 export const TRASH_TOKEN = "::trash";
 
 export interface Transport {
@@ -214,7 +280,7 @@ let transport: Transport = (() => {
   // A plain browser without a backend: show the sample data.
   return createMock({
     platform: (params.get("platform") as Platform) ?? "macos",
-    locale: params.get("lang") ?? navigator.language,
+    locale: params.get("lang") ?? "en",
     iconBase: params.get("icons"),
   });
 })();
@@ -239,12 +305,12 @@ export async function debugInvoke(cmd: "debug_snapshot" | "debug_write" | "debug
 
 export const api = {
   appInfo: () => transport.call<AppMeta>("app_info"),
-  diskInfo: () => transport.call<DiskInfo>("disk_info"),
-  startScan: () => transport.call<null>("start_scan"),
-  scanStatus: () => transport.call<ScanStatus>("scan_status"),
-  overview: () => transport.call<Overview | null>("get_overview"),
+  listDisks: () => transport.call<DiskInfo[]>("list_disks"),
+  startScan: (root: string) => transport.call<null>("start_scan", { root }),
+  scanStatus: (root: string) => transport.call<ScanStatus>("scan_status", { root }),
+  overview: (root: string) => transport.call<Overview | null>("get_overview", { root }),
   listDir: (path: string) => transport.call<Entry[]>("list_dir", { path }),
-  largeFiles: (minSize: number, limit: number) => transport.call<Entry[]>("large_files", { minSize, limit }),
+  largeFiles: (root: string, minSize: number, limit: number) => transport.call<Entry[]>("large_files", { root, minSize, limit }),
   listApps: () => transport.call<AppInfo[]>("list_apps"),
   appRelated: (path: string) => transport.call<RelatedItem[]>("app_related", { path }),
   uninstallApp: (id: string) => transport.call<null>("uninstall_app", { id }),
@@ -255,5 +321,10 @@ export const api = {
   reveal: (path: string) => transport.call<null>("reveal", { path }),
   openPath: (path: string) => transport.call<null>("open_path", { path }),
   openFullDiskAccess: () => transport.call<null>("open_full_disk_access"),
+  bloatScan: () => transport.call<BloatReport>("bloat_scan"),
+  bloatDisableStartup: (id: string) => transport.call<null>("bloat_disable_startup", { id }),
+  bloatQuit: (pids: number[]) => transport.call<number>("bloat_quit", { pids }),
+  bloatRemovePackage: (id: string) => transport.call<null>("bloat_remove_package", { id }),
+  openSettings: (id: string) => transport.call<null>("open_settings", { id }),
   iconUrl: (path: string, size: number) => transport.iconUrl(path, size),
 };

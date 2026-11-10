@@ -32,8 +32,11 @@ pub struct Entry {
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Category {
-    /// "apps" | "documents" | "downloads" | "media" | "developer" | "appData" | "otherHome" | "otherUsers" | "system"
+    /// "apps" | "documents" | "downloads" | "media" | "developer" | "appData" | "otherHome" | "otherUsers" | "system",
+    /// or "folder" for a top-level folder of a disk that is not the system disk (see `name`).
     pub id: &'static str,
+    /// The folder's name when `id` is "folder".
+    pub name: Option<String>,
     pub size: u64,
     /// Folder to open when the category is clicked.
     pub path: Option<String>,
@@ -147,7 +150,7 @@ pub fn list_dir(scan: &ScanData, path: &Path) -> Result<Vec<Entry>, String> {
 
 /// The largest files (and bundles) the user could delete, biggest first.
 pub fn large_files(scan: &ScanData, min_size: u64, limit: usize) -> Vec<Entry> {
-    let system = system_roots();
+    let system = if scan.root == platform::scan_root() { system_roots() } else { Vec::new() };
     let mut out = Vec::new();
     for f in &scan.big {
         if f.size < min_size {
@@ -265,7 +268,51 @@ fn paths() -> Paths {
     }
 }
 
+/// Overview of a disk that is not the system disk: there are no apps or
+/// user folders to tell apart, so the biggest top-level folders stand in.
+fn overview_plain(scan: &ScanData, disk: DiskInfo) -> Overview {
+    let mut top = list_dir(scan, &scan.root).unwrap_or_default();
+    top.retain(|e| e.size > 0 && !e.protected);
+    let mut categories: Vec<Category> = top
+        .iter()
+        .filter(|e| e.is_dir)
+        .take(6)
+        .map(|e| Category {
+            id: "folder",
+            name: Some(e.name.clone()),
+            size: e.size,
+            path: Some(e.path.clone()),
+        })
+        .collect();
+    let shown: u64 = categories.iter().map(|c| c.size).sum();
+    categories.push(Category {
+        id: "otherHome",
+        name: None,
+        size: disk.used.saturating_sub(shown),
+        path: Some(s(&scan.root)),
+    });
+
+    let mut top_folders = top;
+    top_folders.retain(|e| e.is_dir);
+    top_folders.truncate(8);
+    let big = large_files(scan, 100 * 1024 * 1024, usize::MAX);
+    Overview {
+        disk,
+        scanned: scan.tree.size,
+        files: scan.tree.files,
+        duration_ms: scan.duration_ms,
+        finished: scan.finished,
+        categories,
+        top_folders,
+        big_file_count: big.len() as u64,
+        big_file_size: big.iter().map(|e| e.size).sum(),
+    }
+}
+
 pub fn overview(scan: &ScanData, disk: DiskInfo) -> Overview {
+    if scan.root != platform::scan_root() {
+        return overview_plain(scan, disk);
+    }
     let home = platform::home();
     let p = paths();
     let size = |path: &PathBuf| scan.size_of(path);
@@ -303,6 +350,7 @@ pub fn overview(scan: &ScanData, disk: DiskInfo) -> Overview {
 
     let cat = |id: &'static str, size: u64, path: Option<&PathBuf>| Category {
         id,
+        name: None,
         size,
         path: path.map(|q| s(q)),
     };

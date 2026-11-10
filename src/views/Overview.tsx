@@ -1,10 +1,10 @@
 import type { Category } from "../api";
 import { formatBytes, shortPath } from "../format";
-import { formatCount, t } from "../i18n";
+import { formatCount, t, tn } from "../i18n";
 import { Icon } from "../icons";
 import { dismissFda, navigate, openFolder, rescan, setState, useStore } from "../store";
 import { api } from "../api";
-import { CATEGORY_COLOR } from "../theme";
+import { CATEGORY_COLOR, FOLDER_COLORS } from "../theme";
 import { FileIcon, Header, SizeBar } from "../ui";
 
 const HALF_YEAR = 182 * 86400;
@@ -56,6 +56,10 @@ export function OverviewView() {
   const cats = overview.categories.filter((c) => c.size / disk.total > 0.001);
   const visible = cats.filter((c) => c.size / disk.total > 0.003);
   const scanning = scan.state === "scanning";
+  // On the system disk the bar shows kinds of content; on any other disk its biggest folders.
+  const folders = cats.filter((c) => c.id === "folder");
+  const colorOf = (c: Category) => (c.id === "folder" ? FOLDER_COLORS[folders.indexOf(c) % FOLDER_COLORS.length] : CATEGORY_COLOR[c.id]);
+  const labelOf = (c: Category) => (c.id === "folder" ? (c.name ?? "") : t(`cat.${c.id}`));
 
   const openCategory = (c: Category) => {
     if (c.id === "apps") navigate("apps");
@@ -70,7 +74,7 @@ export function OverviewView() {
   const downloads = overview.categories.find((c) => c.id === "downloads");
   const maxFolder = overview.topFolders[0]?.size ?? 0;
 
-  const cards = [
+  const systemCards = [
     {
       key: "cleanup",
       icon: "cleanup",
@@ -84,7 +88,7 @@ export function OverviewView() {
       icon: "file",
       title: t("overview.files.title"),
       size: overview.bigFileSize,
-      hint: t("overview.files.hint", { count: formatCount(overview.bigFileCount) }),
+      hint: tn("overview.files.hint", overview.bigFileCount),
       go: () => navigate("files"),
     },
     {
@@ -92,7 +96,7 @@ export function OverviewView() {
       icon: "apps",
       title: hasUsage ? t("overview.apps.title") : t("nav.apps"),
       size: appsForCard.reduce((s, a) => s + a.size, 0),
-      hint: t(hasUsage ? "overview.apps.hint" : "overview.apps.hintAll", { count: formatCount(appsForCard.length) }),
+      hint: tn(hasUsage ? "overview.apps.hint" : "overview.apps.hintAll", appsForCard.length),
       go: () => {
         if (hasUsage) setState({ appsSort: "used" });
         navigate("apps");
@@ -107,6 +111,20 @@ export function OverviewView() {
       go: () => downloads?.path && openFolder(downloads.path),
     },
   ];
+  // Apps, caches and downloads live on the system disk. Another disk has files and folders.
+  const cards = disk.system
+    ? systemCards
+    : [
+        systemCards[1],
+        {
+          key: "downloads",
+          icon: "folder",
+          title: t("overview.browse.title"),
+          size: overview.scanned,
+          hint: t("overview.browse.hint"),
+          go: () => openFolder(disk.root),
+        },
+      ];
 
   return (
     <>
@@ -119,7 +137,7 @@ export function OverviewView() {
       </Header>
 
       <div className="content">
-        {meta.platform === "macos" && !meta.fullDiskAccess && !fdaDismissed && (
+        {meta.platform === "macos" && disk.system && !meta.fullDiskAccess && !fdaDismissed && (
           <div className="banner">
             <Icon name="info" size={18} />
             <div className="banner-text">
@@ -155,8 +173,8 @@ export function OverviewView() {
                 key={c.id}
                 type="button"
                 className="seg"
-                style={{ flexGrow: c.size, background: CATEGORY_COLOR[c.id] }}
-                title={`${t(`cat.${c.id}`)} · ${formatBytes(c.size)}`}
+                style={{ flexGrow: c.size, background: colorOf(c) }}
+                title={`${labelOf(c)} · ${formatBytes(c.size)}`}
                 onClick={() => openCategory(c)}
               />
             ))}
@@ -168,8 +186,8 @@ export function OverviewView() {
               const clickable = c.id === "apps" || !!c.path;
               return (
                 <button key={c.id} type="button" className="legend-item" disabled={!clickable} onClick={() => openCategory(c)}>
-                  <i style={{ background: CATEGORY_COLOR[c.id] }} />
-                  <span>{t(`cat.${c.id}`)}</span>
+                  <i style={{ background: colorOf(c) }} />
+                  <span>{labelOf(c)}</span>
                   <b>{formatBytes(c.size)}</b>
                 </button>
               );
@@ -178,7 +196,7 @@ export function OverviewView() {
         </section>
 
         <h2 className="section">{t("overview.quick")}</h2>
-        <div className="cards">
+        <div className={`cards${cards.length < 4 ? " few" : ""}`}>
           {cards.map((card) => (
             <button key={card.key} type="button" className="card" onClick={card.go}>
               <span className={`card-icon card-${card.key}`}>
@@ -193,7 +211,7 @@ export function OverviewView() {
         </div>
 
         <h2 className="section">
-          {t("overview.folders")} <span>{t("overview.foldersHint")}</span>
+          {t("overview.folders")} <span>{t(disk.system ? "overview.foldersHint" : "overview.onDisk")}</span>
         </h2>
         <div className="list flush">
           {overview.topFolders.slice(0, 6).map((e) => (

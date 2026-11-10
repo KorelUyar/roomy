@@ -1,5 +1,8 @@
 // All user-facing text, in English and German. German uses the informal "du"
 // and Swiss spelling ("ss" instead of "ß").
+//
+// Roomy starts in English on every computer. The language is the user's
+// choice (sidebar), not a guess from the system settings.
 
 const en = {
   "nav.overview": "Overview",
@@ -35,10 +38,13 @@ const en = {
   "overview.cleanup.title": "Cleanup",
   "overview.cleanup.hint": "Caches, logs and leftovers nobody misses",
   "overview.files.title": "Large files",
-  "overview.files.hint": "{count} files over 100 MB",
+  "overview.files.hint.one": "{count} file over 100 MB",
+  "overview.files.hint.other": "{count} files over 100 MB",
   "overview.apps.title": "Unused apps",
-  "overview.apps.hint": "{count} apps not opened in 6 months",
-  "overview.apps.hintAll": "{count} apps installed",
+  "overview.apps.hint.one": "{count} app not opened in 6 months",
+  "overview.apps.hint.other": "{count} apps not opened in 6 months",
+  "overview.apps.hintAll.one": "{count} app installed",
+  "overview.apps.hintAll.other": "{count} apps installed",
   "overview.downloads.title": "Downloads",
   "overview.downloads.hint": "Usually full of things you needed once",
   "overview.folders": "Biggest folders",
@@ -159,6 +165,122 @@ const en = {
 
   "time.never": "never",
   "time.today": "today",
+
+  "nav.bloat": "Bloat Scanner",
+  "lang.label": "Language",
+  "lang.en": "English",
+  "lang.de": "Deutsch",
+
+  "disks.title": "Disks",
+  "disks.external": "External",
+  "disks.scanning": "Scanning…",
+  "disks.notScanned": "Not scanned yet",
+  "overview.onDisk": "on this disk",
+  "overview.browse.title": "Folders",
+  "overview.browse.hint": "Walk through everything on this disk",
+
+  "bloat.subtitle": "Software nobody asked for, things that start by themselves, and your system's protections.",
+  "bloat.intro.title": "Check this computer for bloat",
+  "bloat.intro.body": "Roomy looks for known unwanted software, lists everything that starts by itself, and checks whether the built-in protections are switched on. Nothing is changed during the scan.",
+  "bloat.start": "Start scan",
+  "bloat.again": "Scan again",
+  "bloat.scanning": "Looking around…",
+  "bloat.step.software": "Installed software",
+  "bloat.step.startup": "Startup items",
+  "bloat.step.processes": "Running processes",
+  "bloat.step.security": "Security settings",
+  "bloat.result": "{processes} processes checked in {seconds} s",
+  "bloat.notAntivirus": "Roomy is not an antivirus. It recognises a short list of widely unwanted software and reads the settings your system exposes.",
+
+  "bloat.tile.unwanted": "Unwanted software",
+  "bloat.tile.startup": "Startup items",
+  "bloat.tile.security": "Security",
+  "bloat.tile.none": "Nothing found",
+  "bloat.tile.count.one": "1 found",
+  "bloat.tile.count.other": "{count} found",
+  "bloat.tile.startupCount": "{count} start by themselves",
+  "bloat.tile.flagged.one": "1 to look at",
+  "bloat.tile.flagged.other": "{count} to look at",
+  "bloat.tile.allGood": "All switched on",
+
+  "bloat.unwanted.title": "Unwanted software",
+  "bloat.unwanted.empty": "None of the known unwanted programs is installed or running.",
+  "bloat.reason.adware": "Adware",
+  "bloat.reason.pup": "Potentially unwanted",
+  "bloat.reason.bundled": "Usually preinstalled",
+  "bloat.reason.promo": "Often preinstalled as an ad",
+  "bloat.running": "Running",
+  "bloat.quit": "Quit",
+  "bloat.quitDone": "{name} was quit",
+  "bloat.remove": "Remove",
+  "bloat.removed": "{name} was removed",
+
+  "bloat.startup.title": "Starts by itself",
+  "bloat.startup.hint": "Programs that start with your computer or run in the background.",
+  "bloat.startup.empty": "Nothing starts by itself besides the system.",
+  "bloat.flag.leftover": "Leftover",
+  "bloat.flag.leftoverHint": "The program it starts no longer exists",
+  "bloat.flag.unsigned": "Unsigned",
+  "bloat.flag.unsignedHint": "Not signed by an identified developer",
+  "bloat.flag.suspicious": "Unusual",
+  "bloat.flag.suspiciousHint": "Starts from a place programs normally do not live in",
+  "bloat.flag.unwanted": "Unwanted",
+  "bloat.flag.unwantedHint": "On the list of known unwanted software",
+  "bloat.off": "Off",
+  "bloat.scope.system": "All users",
+  "bloat.kind.launchAgent": "Launch agent",
+  "bloat.kind.launchDaemon": "System service",
+  "bloat.kind.backgroundItem": "Background item of an app",
+  "bloat.kind.runKey": "Startup entry",
+  "bloat.kind.startupFolder": "Startup folder",
+  "bloat.disable": "Switch off",
+  "bloat.disabled": "{name} no longer starts by itself",
+  "bloat.manage": "Manage…",
+  "bloat.showAll": "Show all {count}",
+
+  "bloat.security.title": "Security check",
+  "bloat.security.open": "Open settings",
+  "bloat.status.ok": "Good",
+  "bloat.status.warn": "Check",
+  "bloat.status.info": "Note",
+  "bloat.status.unknown": "Unknown",
+  "sec.diskEncryption.title.mac": "FileVault disk encryption",
+  "sec.diskEncryption.title.win": "Device encryption (BitLocker)",
+  "sec.diskEncryption.ok": "Your disk is encrypted. Nobody reads it without your password.",
+  "sec.diskEncryption.warn": "Your disk is not encrypted. Whoever gets hold of this computer can read your files.",
+  "sec.firewall.title": "Firewall",
+  "sec.firewall.ok": "Incoming connections are filtered.",
+  "sec.firewall.warn": "The firewall is off. Other devices on the network can reach every program that listens.",
+  "sec.gatekeeper.title": "Gatekeeper",
+  "sec.gatekeeper.ok": "macOS checks apps before they run for the first time.",
+  "sec.gatekeeper.warn": "Gatekeeper is off. Apps run without being checked.",
+  "sec.sip.title": "System Integrity Protection",
+  "sec.sip.ok": "System files are protected from changes.",
+  "sec.sip.warn": "System Integrity Protection is off. Software can change system files.",
+  "sec.updates.title": "Automatic updates",
+  "sec.updates.ok": "Security updates are installed automatically.",
+  "sec.updates.okDays": "Last update installed {days} days ago.",
+  "sec.updates.warn": "Automatic update checks are switched off.",
+  "sec.updates.warnDays": "No update has been installed for {days} days.",
+  "sec.autoLogin.title": "Automatic login",
+  "sec.autoLogin.ok": "A password is asked when this computer starts.",
+  "sec.autoLogin.warn": "This computer signs in by itself. Anyone who switches it on is in your account.",
+  "sec.remoteLogin.title": "Remote Login (SSH)",
+  "sec.remoteLogin.ok": "Nobody can sign in to this computer over the network.",
+  "sec.remoteLogin.info": "Remote Login is on. Fine if you use it, worth switching off if you do not.",
+  "sec.antivirus.title": "Virus protection (Microsoft Defender)",
+  "sec.antivirus.ok": "Real-time protection is on and up to date.",
+  "sec.antivirus.warn": "Real-time protection is off or its definitions are out of date. If you use another antivirus, check it there.",
+  "sec.uac.title": "User Account Control",
+  "sec.uac.ok": "Windows asks before programs change the system.",
+  "sec.uac.warn": "User Account Control is off. Programs can change the system without asking.",
+  "sec.smartScreen.title": "SmartScreen",
+  "sec.smartScreen.ok": "Unknown downloads are checked before they run.",
+  "sec.smartScreen.warn": "SmartScreen is off. Downloads run without a check.",
+  "sec.remoteDesktop.title": "Remote Desktop",
+  "sec.remoteDesktop.ok": "Nobody can connect to this computer with Remote Desktop.",
+  "sec.remoteDesktop.info": "Remote Desktop is on. Fine if you use it, worth switching off if you do not.",
+  "sec.unknown": "Roomy could not read this setting.",
 };
 
 type Key = keyof typeof en;
@@ -197,10 +319,13 @@ const de: Record<Key, string> = {
   "overview.cleanup.title": "Aufräumen",
   "overview.cleanup.hint": "Caches, Logs und Reste, die niemand vermisst",
   "overview.files.title": "Grosse Dateien",
-  "overview.files.hint": "{count} Dateien über 100 MB",
+  "overview.files.hint.one": "{count} Datei über 100 MB",
+  "overview.files.hint.other": "{count} Dateien über 100 MB",
   "overview.apps.title": "Ungenutzte Apps",
-  "overview.apps.hint": "{count} Apps seit 6 Monaten nicht geöffnet",
-  "overview.apps.hintAll": "{count} Apps installiert",
+  "overview.apps.hint.one": "{count} App seit 6 Monaten nicht geöffnet",
+  "overview.apps.hint.other": "{count} Apps seit 6 Monaten nicht geöffnet",
+  "overview.apps.hintAll.one": "{count} App installiert",
+  "overview.apps.hintAll.other": "{count} Apps installiert",
   "overview.downloads.title": "Downloads",
   "overview.downloads.hint": "Meist voll mit Dingen, die du einmal gebraucht hast",
   "overview.folders": "Grösste Ordner",
@@ -321,6 +446,122 @@ const de: Record<Key, string> = {
 
   "time.never": "nie",
   "time.today": "heute",
+
+  "nav.bloat": "Bloat Scanner",
+  "lang.label": "Sprache",
+  "lang.en": "English",
+  "lang.de": "Deutsch",
+
+  "disks.title": "Laufwerke",
+  "disks.external": "Extern",
+  "disks.scanning": "Scan läuft…",
+  "disks.notScanned": "Noch nicht gescannt",
+  "overview.onDisk": "auf diesem Laufwerk",
+  "overview.browse.title": "Ordner",
+  "overview.browse.hint": "Alles auf diesem Laufwerk durchgehen",
+
+  "bloat.subtitle": "Software, die niemand wollte, Dinge, die von selbst starten, und die Schutzfunktionen deines Systems.",
+  "bloat.intro.title": "Diesen Computer auf Ballast prüfen",
+  "bloat.intro.body": "Roomy sucht nach bekannter unerwünschter Software, listet alles auf, was von selbst startet, und prüft, ob die eingebauten Schutzfunktionen eingeschaltet sind. Beim Scan wird nichts verändert.",
+  "bloat.start": "Scan starten",
+  "bloat.again": "Neu scannen",
+  "bloat.scanning": "Ich schaue mich um…",
+  "bloat.step.software": "Installierte Software",
+  "bloat.step.startup": "Autostart-Einträge",
+  "bloat.step.processes": "Laufende Prozesse",
+  "bloat.step.security": "Sicherheitseinstellungen",
+  "bloat.result": "{processes} Prozesse in {seconds} s geprüft",
+  "bloat.notAntivirus": "Roomy ist kein Virenscanner. Es erkennt eine kurze Liste weithin unerwünschter Software und liest die Einstellungen, die dein System preisgibt.",
+
+  "bloat.tile.unwanted": "Unerwünschte Software",
+  "bloat.tile.startup": "Autostart",
+  "bloat.tile.security": "Sicherheit",
+  "bloat.tile.none": "Nichts gefunden",
+  "bloat.tile.count.one": "1 gefunden",
+  "bloat.tile.count.other": "{count} gefunden",
+  "bloat.tile.startupCount": "{count} starten von selbst",
+  "bloat.tile.flagged.one": "1 zum Anschauen",
+  "bloat.tile.flagged.other": "{count} zum Anschauen",
+  "bloat.tile.allGood": "Alles eingeschaltet",
+
+  "bloat.unwanted.title": "Unerwünschte Software",
+  "bloat.unwanted.empty": "Keines der bekannten unerwünschten Programme ist installiert oder läuft.",
+  "bloat.reason.adware": "Adware",
+  "bloat.reason.pup": "Möglicherweise unerwünscht",
+  "bloat.reason.bundled": "Meist vorinstalliert",
+  "bloat.reason.promo": "Oft als Werbung vorinstalliert",
+  "bloat.running": "Läuft",
+  "bloat.quit": "Beenden",
+  "bloat.quitDone": "{name} wurde beendet",
+  "bloat.remove": "Entfernen",
+  "bloat.removed": "{name} wurde entfernt",
+
+  "bloat.startup.title": "Startet von selbst",
+  "bloat.startup.hint": "Programme, die mit deinem Computer starten oder im Hintergrund laufen.",
+  "bloat.startup.empty": "Ausser dem System startet nichts von selbst.",
+  "bloat.flag.leftover": "Überbleibsel",
+  "bloat.flag.leftoverHint": "Das Programm, das gestartet werden soll, gibt es nicht mehr",
+  "bloat.flag.unsigned": "Unsigniert",
+  "bloat.flag.unsignedHint": "Nicht von einem identifizierten Entwickler signiert",
+  "bloat.flag.suspicious": "Ungewöhnlich",
+  "bloat.flag.suspiciousHint": "Startet von einem Ort, an dem Programme normalerweise nicht liegen",
+  "bloat.flag.unwanted": "Unerwünscht",
+  "bloat.flag.unwantedHint": "Auf der Liste bekannter unerwünschter Software",
+  "bloat.off": "Aus",
+  "bloat.scope.system": "Alle Benutzer",
+  "bloat.kind.launchAgent": "Launch Agent",
+  "bloat.kind.launchDaemon": "Systemdienst",
+  "bloat.kind.backgroundItem": "Hintergrundobjekt einer App",
+  "bloat.kind.runKey": "Autostart-Eintrag",
+  "bloat.kind.startupFolder": "Autostart-Ordner",
+  "bloat.disable": "Ausschalten",
+  "bloat.disabled": "{name} startet nicht mehr von selbst",
+  "bloat.manage": "Verwalten…",
+  "bloat.showAll": "Alle {count} anzeigen",
+
+  "bloat.security.title": "Sicherheits-Check",
+  "bloat.security.open": "Einstellungen öffnen",
+  "bloat.status.ok": "Gut",
+  "bloat.status.warn": "Prüfen",
+  "bloat.status.info": "Hinweis",
+  "bloat.status.unknown": "Unbekannt",
+  "sec.diskEncryption.title.mac": "FileVault-Festplattenverschlüsselung",
+  "sec.diskEncryption.title.win": "Geräteverschlüsselung (BitLocker)",
+  "sec.diskEncryption.ok": "Deine Festplatte ist verschlüsselt. Ohne dein Passwort liest sie niemand.",
+  "sec.diskEncryption.warn": "Deine Festplatte ist nicht verschlüsselt. Wer diesen Computer in die Hände bekommt, kann deine Dateien lesen.",
+  "sec.firewall.title": "Firewall",
+  "sec.firewall.ok": "Eingehende Verbindungen werden gefiltert.",
+  "sec.firewall.warn": "Die Firewall ist aus. Andere Geräte im Netzwerk erreichen jedes Programm, das lauscht.",
+  "sec.gatekeeper.title": "Gatekeeper",
+  "sec.gatekeeper.ok": "macOS prüft Apps, bevor sie zum ersten Mal starten.",
+  "sec.gatekeeper.warn": "Gatekeeper ist aus. Apps starten ungeprüft.",
+  "sec.sip.title": "Systemintegritätsschutz",
+  "sec.sip.ok": "Systemdateien sind vor Änderungen geschützt.",
+  "sec.sip.warn": "Der Systemintegritätsschutz ist aus. Software kann Systemdateien verändern.",
+  "sec.updates.title": "Automatische Updates",
+  "sec.updates.ok": "Sicherheitsupdates werden automatisch installiert.",
+  "sec.updates.okDays": "Letztes Update vor {days} Tagen installiert.",
+  "sec.updates.warn": "Die automatische Suche nach Updates ist ausgeschaltet.",
+  "sec.updates.warnDays": "Seit {days} Tagen wurde kein Update installiert.",
+  "sec.autoLogin.title": "Automatische Anmeldung",
+  "sec.autoLogin.ok": "Beim Start dieses Computers wird ein Passwort verlangt.",
+  "sec.autoLogin.warn": "Dieser Computer meldet sich von selbst an. Wer ihn einschaltet, ist in deinem Account.",
+  "sec.remoteLogin.title": "Entfernte Anmeldung (SSH)",
+  "sec.remoteLogin.ok": "Niemand kann sich über das Netzwerk an diesem Computer anmelden.",
+  "sec.remoteLogin.info": "Die entfernte Anmeldung ist ein. In Ordnung, wenn du sie nutzt, sonst besser ausschalten.",
+  "sec.antivirus.title": "Virenschutz (Microsoft Defender)",
+  "sec.antivirus.ok": "Der Echtzeitschutz ist ein und aktuell.",
+  "sec.antivirus.warn": "Der Echtzeitschutz ist aus oder seine Definitionen sind veraltet. Falls du einen anderen Virenscanner nutzt, prüfe es dort.",
+  "sec.uac.title": "Benutzerkontensteuerung",
+  "sec.uac.ok": "Windows fragt nach, bevor Programme das System verändern.",
+  "sec.uac.warn": "Die Benutzerkontensteuerung ist aus. Programme können das System ungefragt verändern.",
+  "sec.smartScreen.title": "SmartScreen",
+  "sec.smartScreen.ok": "Unbekannte Downloads werden vor dem Start geprüft.",
+  "sec.smartScreen.warn": "SmartScreen ist aus. Downloads starten ungeprüft.",
+  "sec.remoteDesktop.title": "Remotedesktop",
+  "sec.remoteDesktop.ok": "Niemand kann sich per Remotedesktop mit diesem Computer verbinden.",
+  "sec.remoteDesktop.info": "Remotedesktop ist ein. In Ordnung, wenn du es nutzt, sonst besser ausschalten.",
+  "sec.unknown": "Roomy konnte diese Einstellung nicht lesen.",
 };
 
 export type Lang = "en" | "de";
@@ -329,18 +570,35 @@ const tables: Record<Lang, Record<Key, string>> = { en, de };
 let lang: Lang = "en";
 let locale = "en-US";
 
-export function setLocale(systemLocale: string) {
-  const override = new URLSearchParams(window.location.search).get("lang");
-  const tag = override || systemLocale || "en";
-  lang = tag.toLowerCase().startsWith("de") ? "de" : "en";
-  // Keep the user's region for number formats (e.g. de-CH), default otherwise.
-  locale = tag.toLowerCase().startsWith(lang) && tag.length >= 2 ? tag.replace("_", "-") : lang === "de" ? "de-CH" : "en-US";
+const STORAGE_KEY = "roomy.lang";
+const LOCALES: Record<Lang, string> = { en: "en-US", de: "de-CH" };
+
+function apply(next: Lang) {
+  lang = next;
+  locale = LOCALES[next];
+  document.documentElement.lang = next;
+}
+
+/** English unless the user picked something else earlier (`?lang=` wins, for screenshots). */
+export function initLanguage(): Lang {
+  let stored: string | null = null;
   try {
-    new Intl.NumberFormat(locale);
+    stored = localStorage.getItem(STORAGE_KEY);
   } catch {
-    locale = lang === "de" ? "de-CH" : "en-US";
+    /* private mode */
   }
-  document.documentElement.lang = lang;
+  const wanted = new URLSearchParams(window.location.search).get("lang") ?? stored ?? "en";
+  apply(wanted.toLowerCase().startsWith("de") ? "de" : "en");
+  return lang;
+}
+
+export function setLanguage(next: Lang) {
+  apply(next);
+  try {
+    localStorage.setItem(STORAGE_KEY, next);
+  } catch {
+    /* private mode */
+  }
 }
 
 export const getLocale = () => locale;
@@ -352,6 +610,15 @@ export function t(key: Key, vars?: Record<string, string | number>): string {
     for (const [name, value] of Object.entries(vars)) text = text.split(`{${name}}`).join(String(value));
   }
   return text;
+}
+
+/** Like `t`, for keys that are put together at run time (`sec.${id}.title`). */
+export function tx(key: string, vars?: Record<string, string | number>): string {
+  return t(key as Key, vars);
+}
+
+export function hasText(key: string): boolean {
+  return key in en;
 }
 
 /** Picks the `.one` / `.other` variant of a key. */

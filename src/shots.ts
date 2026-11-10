@@ -3,7 +3,7 @@
 // app is checked on machines without a person in front of the screen.
 
 import { debugInvoke } from "./api";
-import { getState, navigate, setState } from "./store";
+import { getState, navigate, scanBloat, setState } from "./store";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,6 +23,10 @@ export async function runShots() {
   const dir = getState().meta?.shotsDir;
   if (!dir || started) return;
   started = true;
+  // Anything that goes wrong in the page ends up next to the pictures.
+  const report = (what: string) => void debugInvoke("debug_write", { name: "error.txt", contents: what });
+  window.addEventListener("error", (e) => report(`${e.message}\n${e.error?.stack ?? ""}`));
+  window.addEventListener("unhandledrejection", (e) => report(String(e.reason?.stack ?? e.reason)));
   try {
     await sleep(300);
     await shot("0-scanning");
@@ -37,6 +41,9 @@ export async function runShots() {
     await shot("4-folders");
     navigate("cleanup");
     await shot("5-cleanup");
+    navigate("bloat");
+    await scanBloat();
+    await shot("6-bloat");
     const s = getState();
     await debugInvoke("debug_write", {
       name: "state.json",
@@ -45,6 +52,8 @@ export async function runShots() {
           meta: s.meta,
           disk: s.disk,
           scan: s.scan,
+          disks: s.disks,
+          bloat: s.bloat && { unwanted: s.bloat.unwanted.length, startup: s.bloat.startup.length, security: s.bloat.security },
           apps: s.apps?.length,
           cleanup: s.cleanup?.map((g) => [g.id, g.size, g.items.length]),
           categories: s.overview?.categories,

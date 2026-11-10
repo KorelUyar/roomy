@@ -24,38 +24,101 @@ pub fn scan_root() -> PathBuf {
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskInfo {
+    /// Where the disk is mounted: `/`, `/Volumes/Backup`, `C:\\`, `D:\\`.
+    pub root: String,
     pub name: String,
     pub total: u64,
     pub free: u64,
     pub used: u64,
+    /// The disk the operating system runs from.
+    pub system: bool,
+    /// A stick, card or other disk that can be unplugged.
+    pub removable: bool,
+}
+
+/// The system disk.
+pub fn disk_info() -> DiskInfo {
+    let root = scan_root();
+    disk_info_for(&root).unwrap_or(DiskInfo {
+        root: root.to_string_lossy().into_owned(),
+        name: String::new(),
+        total: 0,
+        free: 0,
+        used: 0,
+        system: true,
+        removable: false,
+    })
+}
+
+/// `true` when `root` is the mount point of one of the disks Roomy shows.
+pub fn is_disk_root(root: &Path) -> bool {
+    list_disks().iter().any(|d| Path::new(&d.root) == root)
 }
 
 #[cfg(unix)]
-pub fn disk_info() -> DiskInfo {
-    let mut total = 0u64;
-    let mut free = 0u64;
+fn usage(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
     unsafe {
         let mut st: libc::statvfs = std::mem::zeroed();
-        let root = std::ffi::CString::new("/").unwrap();
-        if libc::statvfs(root.as_ptr(), &mut st) == 0 {
-            let frsize = st.f_frsize as u64;
-            total = st.f_blocks as u64 * frsize;
-            free = st.f_bavail as u64 * frsize;
+        if libc::statvfs(c.as_ptr(), &mut st) != 0 {
+            return None;
         }
-    }
-    DiskInfo {
-        name: volume_name(),
-        total,
-        free,
-        used: total.saturating_sub(free),
+        let frsize = st.f_frsize as u64;
+        Some((st.f_blocks as u64 * frsize, st.f_bavail as u64 * frsize))
     }
 }
 
+#[cfg(unix)]
+pub fn disk_info_for(root: &Path) -> Option<DiskInfo> {
+    let (total, free) = usage(root)?;
+    let system = root == scan_root();
+    Some(DiskInfo {
+        root: root.to_string_lossy().into_owned(),
+        name: volume_name(root),
+        total,
+        free,
+        used: total.saturating_sub(free),
+        system,
+        removable: !system,
+    })
+}
+
+/// Every disk worth showing: the system disk first, then external and
+/// secondary disks. Disk images, network shares and the hidden system
+/// volumes are left out.
 #[cfg(target_os = "macos")]
-fn volume_name() -> String {
+pub fn list_disks() -> Vec<DiskInfo> {
+    let mut roots: Vec<PathBuf> = vec![scan_root()];
+    unsafe {
+        let mut mounts: *mut libc::statfs = std::ptr::null_mut();
+        let count = libc::getmntinfo(&mut mounts, libc::MNT_NOWAIT);
+        for i in 0..count.max(0) as usize {
+            let m = &*mounts.add(i);
+            let flags = m.f_flags as i64;
+            let path = std::ffi::CStr::from_ptr(m.f_mntonname.as_ptr()).to_string_lossy().into_owned();
+            let local = flags & libc::MNT_LOCAL as i64 != 0;
+            let hidden = flags & libc::MNT_DONTBROWSE as i64 != 0;
+            // Mounted installers and disk images are read-only: not storage you clean up.
+            let read_only = flags & libc::MNT_RDONLY as i64 != 0;
+            if path.starts_with("/Volumes/") && local && !hidden && !read_only {
+                roots.push(PathBuf::from(path));
+            }
+        }
+    }
+    roots.iter().filter_map(|r| disk_info_for(r)).filter(|d| d.total > 0).collect()
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn list_disks() -> Vec<DiskInfo> {
+    disk_info_for(&scan_root()).into_iter().collect()
+}
+
+#[cfg(target_os = "macos")]
+fn volume_name(root: &Path) -> String {
     use objc2_foundation::{NSFileManager, NSString};
     let fm = NSFileManager::defaultManager();
-    let name = fm.displayNameAtPath(&NSString::from_str("/")).to_string();
+    let name = fm.displayNameAtPath(&NSString::from_str(&root.to_string_lossy())).to_string();
     if name.is_empty() || name == "/" {
         "Macintosh HD".into()
     } else {
@@ -64,27 +127,20 @@ fn volume_name() -> String {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn volume_name() -> String {
+fn volume_name(_root: &Path) -> String {
     "Disk".into()
 }
 
 #[cfg(windows)]
-pub fn disk_info() -> DiskInfo {
+pub fn disk_info_for(root: &Path) -> Option<DiskInfo> {
     use windows::core::HSTRING;
-    use windows::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetVolumeInformationW};
+    use windows::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetDriveTypeW, GetVolumeInformationW};
 
-    let root = scan_root();
     let root_h = HSTRING::from(root.as_os_str());
     let mut free_caller = 0u64;
     let mut total = 0u64;
-    let mut free_total = 0u64;
     unsafe {
-        let _ = GetDiskFreeSpaceExW(
-            &root_h,
-            Some(&mut free_caller),
-            Some(&mut total),
-            Some(&mut free_total),
-        );
+        GetDiskFreeSpaceExW(&root_h, Some(&mut free_caller), Some(&mut total), None).ok()?;
     }
     let mut label = [0u16; 261];
     let mut name = String::new();
@@ -94,18 +150,61 @@ pub fn disk_info() -> DiskInfo {
             name = String::from_utf16_lossy(&label[..len]);
         }
     }
+    const DRIVE_REMOVABLE: u32 = 2;
+    let removable = unsafe { GetDriveTypeW(&root_h) } == DRIVE_REMOVABLE;
     let drive = root.to_string_lossy().trim_end_matches('\\').to_string();
     let name = if name.trim().is_empty() {
-        format!("Local Disk ({drive})")
+        format!("{} ({drive})", if removable { "Removable Disk" } else { "Local Disk" })
     } else {
         format!("{} ({drive})", name.trim())
     };
-    DiskInfo {
+    Some(DiskInfo {
+        root: root.to_string_lossy().into_owned(),
         name,
         total,
         free: free_caller,
         used: total.saturating_sub(free_caller),
+        system: root == scan_root(),
+        removable,
+    })
+}
+
+/// Every drive letter that is a real disk: fixed disks, sticks and cards.
+/// Network drives and optical drives are left out.
+#[cfg(windows)]
+pub fn list_disks() -> Vec<DiskInfo> {
+    use windows::core::HSTRING;
+    use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
+    const DRIVE_REMOVABLE: u32 = 2;
+    const DRIVE_FIXED: u32 = 3;
+    const DRIVE_RAMDISK: u32 = 6;
+
+    let mask = unsafe { GetLogicalDrives() };
+    let mut disks: Vec<DiskInfo> = Vec::new();
+    for i in 0..26u32 {
+        if mask & (1 << i) == 0 {
+            continue;
+        }
+        let root = PathBuf::from(format!("{}:\\", (b'A' + i as u8) as char));
+        let kind = unsafe { GetDriveTypeW(&HSTRING::from(root.as_os_str())) };
+        if kind != DRIVE_FIXED && kind != DRIVE_REMOVABLE && kind != DRIVE_RAMDISK {
+            continue;
+        }
+        // An empty card reader has a letter but no disk.
+        if let Some(info) = disk_info_for(&root).filter(|d| d.total > 0) {
+            disks.push(info);
+        }
     }
+    // The system disk leads the list.
+    disks.sort_by_key(|d| !d.system);
+    disks
+}
+
+/// The Windows folder. System tools are started by their full path, never
+/// by whatever happens to be called the same further up the search path.
+#[cfg(windows)]
+pub fn windows_dir() -> PathBuf {
+    PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into()))
 }
 
 /// Show a file in Finder / Explorer.
@@ -118,7 +217,7 @@ pub fn reveal(path: &Path) -> Result<(), String> {
         let mut arg = std::ffi::OsString::from("/select,\"");
         arg.push(path.as_os_str());
         arg.push("\"");
-        Command::new("explorer.exe").raw_arg(arg).spawn()
+        Command::new(windows_dir().join("explorer.exe")).raw_arg(arg).spawn()
     };
     #[cfg(all(unix, not(target_os = "macos")))]
     let res = Command::new("xdg-open")
@@ -132,7 +231,7 @@ pub fn open(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let res = Command::new("/usr/bin/open").arg(path).spawn();
     #[cfg(windows)]
-    let res = Command::new("explorer.exe").arg(path).spawn();
+    let res = Command::new(windows_dir().join("explorer.exe")).arg(path).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
     let res = Command::new("xdg-open").arg(path).spawn();
     res.map(|_| ()).map_err(|e| e.to_string())

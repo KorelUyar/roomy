@@ -5,20 +5,24 @@ import { formatCount, t, tn } from "./i18n";
 import { Icon } from "./icons";
 import { runShots } from "./shots";
 import {
+  chooseLanguage,
   clearSelection,
   dismissToast,
   init,
   navigate,
   rescan,
   runDelete,
+  selectDisk,
   selectionSize,
   setState,
   toggleSelect,
   useStore,
   type View,
 } from "./store";
+import type { Lang } from "./i18n";
 import { FileIcon } from "./ui";
 import { AppsView } from "./views/Apps";
+import { BloatView } from "./views/Bloat";
 import { CleanupView } from "./views/Cleanup";
 import { FilesView } from "./views/Files";
 import { FoldersView } from "./views/Folders";
@@ -30,22 +34,25 @@ const NAV: { view: View; icon: string }[] = [
   { view: "files", icon: "file" },
   { view: "folders", icon: "folder" },
   { view: "cleanup", icon: "cleanup" },
+  { view: "bloat", icon: "bloat" },
 ];
 
 function Sidebar() {
   const view = useStore((s) => s.view);
-  const disk = useStore((s) => s.disk);
+  const disks = useStore((s) => s.disks);
+  const diskRoot = useStore((s) => s.diskRoot);
+  const scans = useStore((s) => s.scans);
+  const overviews = useStore((s) => s.overviews);
   const apps = useStore((s) => s.apps);
   const cleanup = useStore((s) => s.cleanup);
   const overview = useStore((s) => s.overview);
-  const scanning = useStore((s) => s.scan.state === "scanning");
+  const lang = useStore((s) => s.lang);
 
   const hint: Partial<Record<View, number>> = {
     apps: apps?.reduce((s, a) => s + a.size, 0),
     files: overview?.bigFileSize,
     cleanup: cleanup?.reduce((s, g) => s + g.size, 0),
   };
-  const usedPct = disk && disk.total > 0 ? (disk.used / disk.total) * 100 : 0;
 
   return (
     <aside className="sidebar">
@@ -69,20 +76,51 @@ function Sidebar() {
         ))}
       </nav>
       <div className="sidebar-fill" data-tauri-drag-region />
-      {disk && (
-        <div className="disk">
-          <div className="disk-name">
-            <span>{disk.name}</span>
-            <button type="button" className="icon-btn" title={t("disk.rescan")} disabled={scanning} onClick={() => void rescan()}>
-              <Icon name="refresh" size={13} className={scanning ? "spin" : ""} />
-            </button>
-          </div>
-          <div className="disk-bar">
-            <i style={{ width: `${usedPct}%` }} className={usedPct > 90 ? "full" : ""} />
-          </div>
-          <div className="disk-text">{t("disk.freeOf", { free: formatBytes(disk.free), total: formatBytes(disk.total) })}</div>
-        </div>
-      )}
+
+      {disks.length > 1 && <div className="side-label">{t("disks.title")}</div>}
+      <div className="disks">
+        {disks.map((d) => {
+          // Fresh numbers from the last scan when there is one.
+          const disk = overviews[d.root]?.disk ?? d;
+          const scanning = scans[d.root]?.state === "scanning";
+          const selected = d.root === diskRoot;
+          const usedPct = disk.total > 0 ? (disk.used / disk.total) * 100 : 0;
+          return (
+            <div key={d.root} className={`disk${selected ? " on" : ""}${disks.length > 1 ? " pick" : ""}`} onClick={() => selectDisk(d.root)}>
+              <div className="disk-name">
+                <Icon name={d.system ? "disk" : "external"} size={13} />
+                <span>{disk.name}</span>
+                {selected && (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title={t("disk.rescan")}
+                    disabled={scanning}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void rescan();
+                    }}
+                  >
+                    <Icon name="refresh" size={13} className={scanning ? "spin" : ""} />
+                  </button>
+                )}
+              </div>
+              <div className="disk-bar">
+                <i style={{ width: `${usedPct}%` }} className={usedPct > 90 ? "full" : ""} />
+              </div>
+              <div className="disk-text">{scanning && !selected ? t("disks.scanning") : t("disk.freeOf", { free: formatBytes(disk.free), total: formatBytes(disk.total) })}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <label className="lang" title={t("lang.label")}>
+        <Icon name="globe" size={13} />
+        <select value={lang} onChange={(e) => chooseLanguage(e.target.value as Lang)} aria-label={t("lang.label")}>
+          <option value="en">{t("lang.en")}</option>
+          <option value="de">{t("lang.de")}</option>
+        </select>
+      </label>
     </aside>
   );
 }
@@ -265,6 +303,8 @@ export function App() {
   const view = useStore((s) => s.view);
   const confirmOpen = useStore((s) => s.confirmOpen);
   const hasSelection = useStore((s) => s.selection.size > 0);
+  // A new language rebuilds everything on screen.
+  const lang = useStore((s) => s.lang);
 
   useEffect(() => {
     void init().then(runShots);
@@ -292,7 +332,7 @@ export function App() {
           <b>&#x2715;</b>
         </div>
       )}
-      <div className="app">
+      <div className="app" key={lang}>
         {frame === "macos" && (
           <div className="lights" aria-hidden="true">
             <i />
@@ -307,6 +347,7 @@ export function App() {
         {view === "files" && <FilesView />}
         {view === "folders" && <FoldersView />}
         {view === "cleanup" && <CleanupView />}
+        {view === "bloat" && <BloatView />}
         <SelectionBar />
         <Toasts />
       </main>

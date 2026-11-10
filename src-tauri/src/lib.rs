@@ -141,6 +141,22 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("roomyicon", |_ctx, request, responder| {
             std::thread::spawn(move || responder.respond(icon_response(&request)));
         })
+        .setup(|app| {
+            // With ROOMY_SHOTS set, also save a picture every few seconds from
+            // outside the page: it shows the window even when the page's own
+            // tour is stuck.
+            if let Some(dir) = shots_dir() {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    std::thread::spawn(move || loop {
+                        std::thread::sleep(std::time::Duration::from_secs(8));
+                        let _ = std::fs::create_dir_all(&dir);
+                        let _ = snapshot::take(&window, dir.join("watch.png"));
+                    });
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![rpc, debug_snapshot, debug_write, debug_exit])
         .run(tauri::generate_context!())
         .expect("error while running Roomy");

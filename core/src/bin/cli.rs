@@ -1,7 +1,9 @@
 //! `roomy-cli`: the scanner without the window. Used for testing.
 //!
 //!   roomy-cli scan [PATH]      scan a folder (default: the whole disk) and print the biggest entries
+//!   roomy-cli disks            list the disks Roomy would show
 //!   roomy-cli apps             list installed apps
+//!   roomy-cli bloat            run the Bloat Scanner (read-only)
 //!   roomy-cli cleanup          list cleanup suggestions
 //!   roomy-cli icon PATH OUT    write the icon of PATH to OUT (png)
 //!   roomy-cli selftest [DIR]   run every read-only code path once (CI smoke test)
@@ -9,7 +11,7 @@
 //!                              testing the interface in a normal browser
 
 use roomy_core::engine::Engine;
-use roomy_core::{apps, browse, cleanup, icons, platform, scan};
+use roomy_core::{apps, bloat, browse, cleanup, icons, platform, scan};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -189,16 +191,55 @@ fn main() {
             for c in kids.iter().take(25) {
                 println!("{:>10}  {:>9} files  {}{}", human(c.size), c.files, c.name, if c.denied { "  (no access)" } else { "" });
             }
-            if root == platform::scan_root() {
-                let ov = browse::overview(&data, platform::disk_info());
+            if let Some(disk) = platform::disk_info_for(&root).filter(|_| platform::is_disk_root(&root)) {
+                let ov = browse::overview(&data, disk);
                 println!("\ndisk: {} — {} used of {}, {} free", ov.disk.name, human(ov.disk.used), human(ov.disk.total), human(ov.disk.free));
                 for c in &ov.categories {
-                    println!("{:>10}  {}", human(c.size), c.id);
+                    println!("{:>10}  {}", human(c.size), c.name.clone().unwrap_or(c.id.to_string()));
                 }
                 println!("\nlargest files:");
                 for f in browse::large_files(&data, 0, 15) {
                     println!("{:>10}  {}{}", human(f.size), f.path, if f.app_data { "  [app data]" } else { "" });
                 }
+            }
+        }
+        Some("disks") => {
+            for d in platform::list_disks() {
+                println!(
+                    "{:<28} {:<22} {:>10} used of {:>10}, {:>10} free{}{}",
+                    d.name,
+                    d.root,
+                    human(d.used),
+                    human(d.total),
+                    human(d.free),
+                    if d.system { "  [system]" } else { "" },
+                    if d.removable { "  [external]" } else { "" }
+                );
+            }
+        }
+        Some("bloat") => {
+            let report = bloat::scan();
+            println!("{} processes looked at in {:.1}s", report.processes, report.duration_ms as f64 / 1000.0);
+            println!("\nunwanted software: {}", report.unwanted.len());
+            for u in &report.unwanted {
+                println!("  [{}] {}  {}  {}{}", u.reason, u.name, human(u.size), u.removal, if u.running { "  (running)" } else { "" });
+            }
+            println!("\nstartup items: {}", report.startup.len());
+            for i in &report.startup {
+                println!(
+                    "  {:<34} {:<6} {:<14} {:<22} {}{}{}",
+                    i.name.chars().take(34).collect::<String>(),
+                    i.scope,
+                    i.kind,
+                    i.vendor.clone().unwrap_or_default().chars().take(22).collect::<String>(),
+                    i.flags.join(","),
+                    if i.running { "  (running)" } else { "" },
+                    if i.enabled { "" } else { "  (off)" }
+                );
+            }
+            println!("\nsecurity:");
+            for c in &report.security {
+                println!("  {:<16} {:<8} {}", c.id, c.status, c.detail.clone().unwrap_or_default());
             }
         }
         Some("apps") => {
@@ -247,10 +288,14 @@ fn main() {
         }
         Some("selftest") => {
             let out_dir = args.get(1).map(PathBuf::from);
-            let disk = platform::disk_info();
-            println!("disk: {} total {} free {}", disk.name, human(disk.total), human(disk.free));
+            let disks = platform::list_disks();
+            for d in &disks {
+                println!("disk: {} ({}) total {} free {}{}", d.name, d.root, human(d.total), human(d.free), if d.system { " [system]" } else { "" });
+            }
+            let disk = disks.iter().find(|d| d.system).expect("the system disk is listed");
             assert!(disk.total > 0, "disk size");
             assert!(disk.free <= disk.total, "free space");
+            assert!(platform::is_disk_root(&platform::scan_root()), "system root is a disk root");
             println!("locale: {}  home: {}  root: {}", platform::locale(), platform::home().display(), platform::scan_root().display());
 
             // Scan the home folder: big enough to be meaningful, quick enough for CI.
@@ -292,10 +337,27 @@ fn main() {
             }
             println!("trash: {:?}", roomy_core::delete::trash_info());
             println!("full disk access: {}", platform::has_full_disk_access());
+            let report = bloat::scan();
+            println!(
+                "bloat scan: {} processes, {} unwanted, {} startup items, {} security checks in {} ms",
+                report.processes,
+                report.unwanted.len(),
+                report.startup.len(),
+                report.security.len(),
+                report.duration_ms
+            );
+            for c in &report.security {
+                println!("  security {:<16} {}", c.id, c.status);
+            }
+            for i in report.startup.iter().take(6) {
+                println!("  startup {} [{} / {}] {}", i.name, i.scope, i.kind, i.flags.join(","));
+            }
+            assert!(report.processes > 0, "no processes listed");
+            assert!(!report.security.is_empty(), "no security checks");
             println!("selftest ok");
         }
         _ => {
-            eprintln!("usage: roomy-cli scan [PATH] | apps [APP] | cleanup | icon PATH OUT | selftest [DIR] | serve PORT TOKEN");
+            eprintln!("usage: roomy-cli scan [PATH] | disks | apps [APP] | cleanup | bloat | icon PATH OUT | selftest [DIR] | serve PORT TOKEN");
             std::process::exit(2);
         }
     }

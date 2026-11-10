@@ -232,10 +232,46 @@ fn resolved(path: &Path) -> Option<PathBuf> {
     Some(parent.join(path.file_name()?))
 }
 
+/// Folders every disk carries for the system: its trash, its search index …
+const VOLUME_HOUSEKEEPING: &[&str] = &[
+    ".trashes",
+    ".spotlight-v100",
+    ".fseventsd",
+    ".temporaryitems",
+    ".documentrevisions-v100",
+    ".volumeicon.icns",
+    "$recycle.bin",
+    "system volume information",
+];
+
+/// The mount point of a disk: `/Volumes/Backup`, `D:\\`.
+fn is_volume_root(path: &Path) -> bool {
+    if cfg!(windows) {
+        let s = path.to_string_lossy();
+        let b = s.as_bytes();
+        (b.len() == 3 && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')) || (b.len() == 2 && b[1] == b':')
+    } else {
+        path == Path::new("/") || path.parent() == Some(Path::new("/Volumes"))
+    }
+}
+
+/// A disk itself, or one of the system's own folders at the top of a disk.
+fn is_volume_item(path: &Path) -> bool {
+    if is_volume_root(path) {
+        return true;
+    }
+    let at_top = path.parent().map(is_volume_root).unwrap_or(false);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    at_top && VOLUME_HOUSEKEEPING.contains(&name.as_str())
+}
+
 /// `true` when Roomy must not delete `path`.
 pub fn is_protected(path: &Path) -> bool {
     let r = rules();
-    check(r, path) || resolved(path).map(|p| check(r, &p)).unwrap_or(false)
+    is_volume_item(path) || check(r, path) || resolved(path).map(|p| check(r, &p)).unwrap_or(false)
 }
 
 fn check(rules: &Rules, path: &Path) -> bool {
@@ -265,7 +301,7 @@ fn check(rules: &Rules, path: &Path) -> bool {
 /// protected (e.g. `~/Library/Caches/com.foo`). That is fine as long as the
 /// item is not in a hard-protected subtree.
 pub fn is_hard_protected(path: &Path) -> bool {
-    hard(path) || resolved(path).map(|p| hard(&p)).unwrap_or(false)
+    is_volume_item(path) || hard(path) || resolved(path).map(|p| hard(&p)).unwrap_or(false)
 }
 
 fn hard(path: &Path) -> bool {
@@ -298,6 +334,12 @@ mod tests {
         assert!(is_protected(&home.join("Library/Keychains/login.keychain-db")));
         assert!(is_protected(&home.join(".ssh/id_ed25519")));
         assert!(is_protected(Path::new("relative/path")));
+        // Other disks: the disk itself and the system's folders on it.
+        assert!(is_protected(Path::new("/Volumes/Backup")));
+        assert!(is_protected(Path::new("/Volumes/Backup/.Trashes")));
+        assert!(is_protected(Path::new("/Volumes/Backup/.Spotlight-V100")));
+        assert!(!is_protected(Path::new("/Volumes/Backup/Movies")));
+        assert!(!is_protected(Path::new("/Volumes/Backup/Movies/.Trashes")));
         // Reached through the /etc and /var symlinks.
         assert!(is_protected(Path::new("/etc/hosts")));
         assert!(is_protected(Path::new("/var/db/dslocal")));

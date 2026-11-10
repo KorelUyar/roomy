@@ -472,7 +472,7 @@ mod win {
 
         // `cmd /C ""C:\Program Files\X\uninstall.exe" /arg"`: the outer pair
         // of quotes is what cmd strips, the rest reaches the program intact.
-        std::process::Command::new("cmd.exe")
+        std::process::Command::new(crate::platform::windows_dir().join("System32\\cmd.exe"))
             .raw_arg(format!("/C \"{cmd}\""))
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()

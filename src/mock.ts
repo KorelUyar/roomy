@@ -5,6 +5,7 @@
 import type {
   AppInfo,
   AppMeta,
+  BloatReport,
   CleanGroup,
   CleanItem,
   DeleteOutcome,
@@ -332,15 +333,32 @@ export function createMock(opts: MockOptions): Transport {
 
   const disk = { name: win ? "Windows (C:)" : "Macintosh HD", total: 494.38 * GB };
   const systemSize = 41.8 * GB;
+
+  // A second disk, to show that Roomy looks at every one of them.
+  const extRoot = win ? "D:\\" : "/Volumes/Backup SSD";
+  const extDisk = { name: win ? "Data (D:)" : "Backup SSD", total: 1000.2 * GB };
+  const ext = d("", [
+    d("Photo archive", [f("2019.zip", 61.2 * GB, 900), f("2020.zip", 74.8 * GB, 800), f("2021.zip", 88.1 * GB, 700), f("2022 raw.zip", 96.4 * GB, 500)]),
+    d("Video projects", [f("Documentary master.mov", 118.3 * GB, 420), f("Interviews.zip", 64.9 * GB, 430), f("Drone footage.mov", 41.7 * GB, 380)]),
+    d("Old laptop backup", [f("Users.zip", 96.2 * GB, 1100), f("Applications.zip", 22.4 * GB, 1100)]),
+    d("Games", [f("Library.bin", 71.5 * GB, 60)]),
+    d("Music production", [f("Samples.zip", 38.6 * GB, 300), f("Sessions.zip", 17.2 * GB, 200)]),
+    f("disk-image-2021.dmg", 12.8 * GB, 1000),
+  ]);
+  total(ext);
   const appsSize = () => apps.reduce((s, a) => s + a.size, 0);
   const used = () => home.size + appsSize() + systemSize + trashSize;
 
+  const onExt = (path: string) => path === extRoot || path.startsWith(join(extRoot, ""));
+
   function find(path: string): { node: Node; parent: Node | null } | null {
-    if (path === homePath) return { node: home, parent: null };
-    if (!path.startsWith(homePath + sep)) return null;
-    let node = home;
+    const [base, tree] = onExt(path) ? [extRoot, ext] : [homePath, home];
+    if (path === base) return { node: tree, parent: null };
+    const prefix = join(base, "");
+    if (!path.startsWith(prefix)) return null;
+    let node = tree;
     let parent: Node | null = null;
-    for (const part of path.slice(homePath.length + 1).split(sep)) {
+    for (const part of path.slice(prefix.length).split(sep)) {
       const next = node.children?.find((c) => c.name === part);
       if (!next) return null;
       parent = node;
@@ -367,7 +385,7 @@ export function createMock(opts: MockOptions): Transport {
       package: !!node.pkg,
       kind: kindOf(node),
       modified: now - (node.age ?? 30) * DAY,
-      protected: PROTECTED.has(path) || (isAppData(parent) && parent === join(homePath, win ? "AppData" : "Library")),
+      protected: !onExt(path) && (PROTECTED.has(path) || (isAppData(parent) && parent === join(homePath, win ? "AppData" : "Library"))),
       denied: false,
       appData: isAppData(path),
     };
@@ -402,7 +420,7 @@ export function createMock(opts: MockOptions): Transport {
     return hit.node.children.map((c) => entry(c, path)).sort(bySize);
   }
 
-  function allFiles(): Entry[] {
+  function allFiles(diskRoot: string = root): Entry[] {
     const out: Entry[] = [];
     const walk = (node: Node, parent: string) => {
       for (const c of node.children ?? []) {
@@ -410,11 +428,43 @@ export function createMock(opts: MockOptions): Transport {
         else if (c.size >= 10 * MB && !c.name.startsWith("(")) out.push(entry(c, parent));
       }
     };
-    walk(home, homePath);
+    if (diskRoot === extRoot) walk(ext, extRoot);
+    else walk(home, homePath);
     return out.sort((a, b) => b.size - a.size);
   }
 
-  function overview(): Overview {
+  const diskInfos = () => {
+    const u = used();
+    return [
+      { root, name: disk.name, total: disk.total, used: u, free: disk.total - u, system: true, removable: false },
+      { root: extRoot, name: extDisk.name, total: extDisk.total, used: ext.size + 2.1 * GB, free: extDisk.total - ext.size - 2.1 * GB, system: false, removable: !win },
+    ];
+  };
+
+  function overviewExt(): Overview {
+    const top = listDir(extRoot);
+    const dirs = top.filter((e) => e.isDir);
+    const info = diskInfos()[1];
+    const shown = dirs.slice(0, 6);
+    const big = allFiles(extRoot).filter((e) => e.size >= 100 * MB);
+    return {
+      disk: info,
+      scanned: ext.size,
+      files: 48_210,
+      durationMs: 2100,
+      finished: now,
+      categories: [
+        ...shown.map((e) => ({ id: "folder" as const, name: e.name, size: e.size, path: e.path })),
+        { id: "otherHome" as const, name: null, size: info.used - shown.reduce((s, e) => s + e.size, 0), path: extRoot },
+      ],
+      topFolders: dirs.slice(0, 8),
+      bigFileCount: big.length,
+      bigFileSize: big.reduce((s, e) => s + e.size, 0),
+    };
+  }
+
+  function overview(diskRoot: string = root): Overview {
+    if (diskRoot === extRoot) return overviewExt();
     const sizeOf = (name: string) => home.children!.find((c) => c.name === name)?.size ?? 0;
     const media = sizeOf(win ? "Videos" : "Movies") + sizeOf("Pictures") + sizeOf("Music");
     const documents = sizeOf("Documents") + sizeOf("Desktop");
@@ -424,21 +474,21 @@ export function createMock(opts: MockOptions): Transport {
     const big = allFiles().filter((e) => e.size >= 100 * MB && !e.appData);
     const u = used();
     return {
-      disk: { name: disk.name, total: disk.total, used: u, free: disk.total - u },
+      disk: { root, name: disk.name, total: disk.total, used: u, free: disk.total - u, system: true, removable: false },
       scanned: home.size + appsSize() + 22 * GB,
       files: 1_284_366,
       durationMs: 6400,
       finished: now,
       categories: [
-        { id: "apps", size: appsSize(), path: win ? "C:\\Program Files" : "/Applications" },
-        { id: "documents", size: documents, path: join(homePath, "Documents") },
-        { id: "downloads", size: downloads, path: join(homePath, "Downloads") },
-        { id: "media", size: media, path: join(homePath, win ? "Videos" : "Movies") },
-        { id: "developer", size: developer, path: join(homePath, win ? "source" : "Developer") },
-        { id: "appData", size: appData, path: join(homePath, win ? "AppData" : "Library") },
-        { id: "otherHome", size: Math.max(0, home.size - media - documents - developer - appData - downloads), path: homePath },
-        { id: "otherUsers", size: 0, path: users },
-        { id: "system", size: systemSize + trashSize, path: null },
+        { id: "apps", name: null, size: appsSize(), path: win ? "C:\\Program Files" : "/Applications" },
+        { id: "documents", name: null, size: documents, path: join(homePath, "Documents") },
+        { id: "downloads", name: null, size: downloads, path: join(homePath, "Downloads") },
+        { id: "media", name: null, size: media, path: join(homePath, win ? "Videos" : "Movies") },
+        { id: "developer", name: null, size: developer, path: join(homePath, win ? "source" : "Developer") },
+        { id: "appData", name: null, size: appData, path: join(homePath, win ? "AppData" : "Library") },
+        { id: "otherHome", name: null, size: Math.max(0, home.size - media - documents - developer - appData - downloads), path: homePath },
+        { id: "otherUsers", name: null, size: 0, path: users },
+        { id: "system", name: null, size: systemSize + trashSize, path: null },
       ],
       topFolders: listDir(homePath).filter((e) => e.isDir).slice(0, 8),
       bigFileCount: big.length,
@@ -469,6 +519,11 @@ export function createMock(opts: MockOptions): Transport {
       return { path: req.path, ok: true, error: null, freed, trashed: false, skipped: 0 };
     }
     let freed = remove(req.path);
+    const unwanted = bloat.unwanted.find((u) => u.target === req.path);
+    if (unwanted) {
+      freed = freed || unwanted.size;
+      bloat = { ...bloat, unwanted: bloat.unwanted.filter((u) => u !== unwanted) };
+    }
     for (const g of cleanup) {
       const it = g.items.find((i) => i.path === req.path);
       if (it) {
@@ -484,24 +539,83 @@ export function createMock(opts: MockOptions): Transport {
   }
 
   // A scan that takes a moment, so the progress screen can be seen.
-  let scanStarted = 0;
+  const scanStarted: Record<string, number> = {};
   const scanMs = opts.shotsDir || new URLSearchParams(location.search).has("fast") ? 250 : 2600;
-  function status(): ScanStatus {
-    if (!scanStarted) return { state: "idle", files: 0, bytes: 0, current: "" };
-    const t = Math.min(1, (Date.now() - scanStarted) / scanMs);
+  function status(diskRoot: string = root): ScanStatus {
+    const started = scanStarted[diskRoot];
+    if (!started) return { state: "idle", files: 0, bytes: 0, current: "" };
+    const external = diskRoot === extRoot;
+    const t = Math.min(1, (Date.now() - started) / (external ? scanMs / 2 : scanMs));
     const eased = 1 - (1 - t) ** 2;
-    const stops = ["Applications", "Library", "Users/alex/Library", "Users/alex/Movies", "Users/alex/Pictures", "Users/alex/Documents"];
+    const stops = external
+      ? ["Photo archive", "Video projects", "Old laptop backup"]
+      : ["Applications", "Library", "Users/alex/Library", "Users/alex/Movies", "Users/alex/Pictures", "Users/alex/Documents"];
     return {
       state: t >= 1 ? "done" : "scanning",
-      files: Math.round(1_284_366 * eased),
-      bytes: Math.round((home.size + appsSize() + 22 * GB) * eased),
-      current: root + stops[Math.min(stops.length - 1, Math.floor(t * stops.length))].split("/").join(sep),
+      files: Math.round((external ? 48_210 : 1_284_366) * eased),
+      bytes: Math.round((external ? ext.size : home.size + appsSize() + 22 * GB) * eased),
+      current: join(diskRoot, stops[Math.min(stops.length - 1, Math.floor(t * stops.length))].split("/").join(sep)),
     };
   }
 
+  // What the Bloat Scanner finds on the sample computer.
+  let bloat: BloatReport = win
+    ? {
+        unwanted: [
+          { id: "HKLM64\\wt", name: "WildTangent Games", reason: "bundled", path: "C:\\Program Files (x86)\\WildTangent Games", icon: "", size: 412 * MB, running: true, pids: [4312], removal: "uninstaller", target: "HKLM64\\wt" },
+          { id: "package:king.com.CandyCrushSaga_1.2_x64__kgqvnymyfvs32", name: "Candy Crush", reason: "promo", path: "", icon: "", size: 286 * MB, running: false, pids: [], removal: "package", target: "king.com.CandyCrushSaga_1.2_x64__kgqvnymyfvs32" },
+          { id: "HKLM64\\pcopt", name: "PC Optimizer Pro", reason: "pup", path: "C:\\Program Files\\PC Optimizer Pro", icon: "", size: 94 * MB, running: true, pids: [7120, 7124], removal: "uninstaller", target: "HKLM64\\pcopt" },
+        ],
+        startup: [
+          { id: "run:HKCU:PCOptimizerPro", name: "PC Optimizer Pro", label: "PCOptimizerPro", program: "C:\\Program Files\\PC Optimizer Pro\\pcopt.exe", source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", kind: "runKey", vendor: null, running: true, enabled: true, flags: ["unwanted"], canDisable: true, icon: "" },
+          { id: "run:HKCU:OldVpn", name: "Old VPN Helper", label: "OldVpn", program: "C:\\Program Files\\OldVPN\\helper.exe", source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", kind: "runKey", vendor: null, running: false, enabled: true, flags: ["leftover"], canDisable: true, icon: "" },
+          { id: "run:HKCU:Spotify", name: "Spotify", label: "Spotify", program: "C:\\Users\\alex\\AppData\\Roaming\\Spotify\\Spotify.exe", source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", kind: "runKey", vendor: null, running: true, enabled: true, flags: [], canDisable: true, icon: "" },
+          { id: "run:HKCU:Discord", name: "Discord", label: "Discord", program: "C:\\Users\\alex\\AppData\\Local\\Discord\\Update.exe", source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", kind: "runKey", vendor: null, running: true, enabled: true, flags: [], canDisable: true, icon: "" },
+          { id: "run:HKLM:SecurityHealth", name: "Windows Security notification icon", label: "SecurityHealth", program: "C:\\Windows\\System32\\SecurityHealthSystray.exe", source: "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "system", kind: "runKey", vendor: null, running: true, enabled: true, flags: [], canDisable: false, icon: "" },
+          { id: "run:HKCU:Steam", name: "Steam", label: "Steam", program: "C:\\Program Files (x86)\\Steam\\steam.exe", source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", kind: "runKey", vendor: null, running: false, enabled: false, flags: [], canDisable: true, icon: "" },
+        ],
+        security: [
+          { id: "antivirus", status: "ok", detail: "1" },
+          { id: "firewall", status: "ok", detail: null },
+          { id: "diskEncryption", status: "warn", detail: null },
+          { id: "uac", status: "ok", detail: null },
+          { id: "updates", status: "warn", detail: "63" },
+          { id: "smartScreen", status: "ok", detail: null },
+          { id: "remoteDesktop", status: "ok", detail: null },
+        ],
+        processes: 214,
+        durationMs: 1900,
+      }
+    : {
+        unwanted: [
+          { id: "/Applications/Mac Speedup Pro.app", name: "Mac Speedup Pro", reason: "pup", path: "/Applications/Mac Speedup Pro.app", icon: "", size: 212 * MB, running: true, pids: [812], removal: "trash", target: "/Applications/Mac Speedup Pro.app" },
+          { id: "process:SearchMine", name: "SearchMine", reason: "adware", path: `${homePath}/Library/Application Support/SearchMine/SearchMine`, icon: "", size: 0, running: true, pids: [640], removal: "none", target: "" },
+        ],
+        startup: [
+          { id: `${homePath}/Library/LaunchAgents/com.searchmine.agent.plist`, name: "com.searchmine.agent", label: "com.searchmine.agent", program: `${homePath}/Library/Application Support/SearchMine/SearchMine`, source: `${homePath}/Library/LaunchAgents/com.searchmine.agent.plist`, scope: "user", kind: "launchAgent", vendor: null, running: true, enabled: true, flags: ["unwanted", "unsigned"], canDisable: true, icon: "" },
+          { id: `${homePath}/Library/LaunchAgents/com.oldvpn.helper.plist`, name: "com.oldvpn.helper", label: "com.oldvpn.helper", program: "/Applications/OldVPN.app/Contents/MacOS/helper", source: `${homePath}/Library/LaunchAgents/com.oldvpn.helper.plist`, scope: "user", kind: "launchAgent", vendor: null, running: false, enabled: true, flags: ["leftover"], canDisable: true, icon: "" },
+          { id: "label:com.anthropic.claudefordesktop.helper", name: "Claude", label: "com.anthropic.claudefordesktop.helper", program: "/Applications/Claude.app/Contents/MacOS/Claude", source: "/Applications/Claude.app", scope: "user", kind: "backgroundItem", vendor: "Anthropic PBC", running: true, enabled: true, flags: [], canDisable: false, icon: "/Applications/Claude.app" },
+          { id: `${homePath}/Library/LaunchAgents/dev.orbstack.helper.plist`, name: "OrbStack", label: "dev.orbstack.helper", program: "/Applications/OrbStack.app/Contents/MacOS/OrbStack Helper", source: `${homePath}/Library/LaunchAgents/dev.orbstack.helper.plist`, scope: "user", kind: "launchAgent", vendor: "Orbital Labs, LLC", running: true, enabled: true, flags: [], canDisable: true, icon: "/Applications/OrbStack.app" },
+          { id: "label:io.tailscale.ipn.macsys.login-item-helper", name: "Tailscale", label: "io.tailscale.ipn.macsys.login-item-helper", program: "/Applications/Tailscale.app/Contents/MacOS/Tailscale", source: "/Applications/Tailscale.app", scope: "user", kind: "backgroundItem", vendor: "Tailscale Inc.", running: true, enabled: true, flags: [], canDisable: false, icon: "/Applications/Tailscale.app" },
+          { id: `${homePath}/Library/LaunchAgents/homebrew.mxcl.postgresql.plist`, name: "homebrew.mxcl.postgresql", label: "homebrew.mxcl.postgresql", program: "/opt/homebrew/opt/postgresql/bin/postgres", source: `${homePath}/Library/LaunchAgents/homebrew.mxcl.postgresql.plist`, scope: "user", kind: "launchAgent", vendor: null, running: true, enabled: true, flags: ["unsigned"], canDisable: true, icon: "" },
+          { id: "/Library/LaunchDaemons/com.docker.vmnetd.plist", name: "com.docker.vmnetd", label: "com.docker.vmnetd", program: "/Library/PrivilegedHelperTools/com.docker.vmnetd", source: "/Library/LaunchDaemons/com.docker.vmnetd.plist", scope: "system", kind: "launchDaemon", vendor: "Docker Inc", running: false, enabled: true, flags: [], canDisable: false, icon: "" },
+        ],
+        security: [
+          { id: "diskEncryption", status: "ok", detail: null },
+          { id: "firewall", status: "warn", detail: null },
+          { id: "gatekeeper", status: "ok", detail: null },
+          { id: "sip", status: "ok", detail: null },
+          { id: "updates", status: "ok", detail: null },
+          { id: "autoLogin", status: "ok", detail: null },
+          { id: "remoteLogin", status: "info", detail: null },
+        ],
+        processes: 487,
+        durationMs: 1600,
+      };
+
   const meta: AppMeta = {
     platform: opts.platform,
-    version: "0.1.0",
+    version: "0.2.0",
     home: homePath,
     root,
     locale: opts.locale,
@@ -523,19 +637,35 @@ export function createMock(opts: MockOptions): Transport {
 
   const handlers: Record<string, (args: any) => unknown> = {
     app_info: () => meta,
-    disk_info: () => overview().disk,
-    start_scan: () => {
-      scanStarted = Date.now();
+    list_disks: () => diskInfos(),
+    start_scan: (a) => {
+      scanStarted[a.root ?? root] = Date.now();
       return null;
     },
-    scan_status: () => status(),
-    get_overview: () => (status().state === "done" ? overview() : null),
+    scan_status: (a) => status(a.root ?? root),
+    get_overview: (a) => (status(a.root ?? root).state === "done" ? overview(a.root ?? root) : null),
     list_dir: (a) => listDir(a.path),
-    large_files: (a) => allFiles().filter((e) => e.size >= (a.minSize ?? 0)).slice(0, a.limit ?? 500),
+    large_files: (a) => allFiles(a.root ?? root).filter((e) => e.size >= (a.minSize ?? 0)).slice(0, a.limit ?? 500),
+    bloat_scan: () => bloat,
+    bloat_disable_startup: (a) => {
+      bloat = { ...bloat, startup: bloat.startup.map((i) => (i.id === a.id ? { ...i, enabled: false, running: false } : i)).filter((i) => !(i.id === a.id && !win)) };
+      return null;
+    },
+    bloat_quit: (a) => {
+      const pids = a.pids as number[];
+      bloat = { ...bloat, unwanted: bloat.unwanted.map((u) => (u.pids.some((p) => pids.includes(p)) ? { ...u, running: false, pids: [] } : u)).filter((u) => u.removal !== "none" || u.running) };
+      return pids.length;
+    },
+    bloat_remove_package: (a) => {
+      bloat = { ...bloat, unwanted: bloat.unwanted.filter((u) => u.target !== a.id) };
+      return null;
+    },
+    open_settings: () => null,
     list_apps: () => [...apps].sort((a, b) => b.size - a.size),
     app_related: (a) => (win ? [] : related(a.path)),
     uninstall_app: (a) => {
       apps = apps.filter((x) => x.id !== a.id);
+      bloat = { ...bloat, unwanted: bloat.unwanted.filter((u) => u.target !== a.id) };
       return null;
     },
     cleanup_suggestions: () => cleanup.map((g) => ({ ...g, items: [...g.items] })),

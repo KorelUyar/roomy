@@ -15,6 +15,8 @@ export function FoldersView() {
   const version = useStore((s) => s.version);
   const scanned = useStore((s) => s.overview !== null);
   const diskName = useStore((s) => s.disk?.name ?? "");
+  const diskRoot = useStore((s) => s.diskRoot);
+  const onSystemDisk = useStore((s) => s.disk?.system ?? true);
   const selection = useStore((s) => s.selection);
   const [data, setData] = useState<{ path: string; entries: Entry[] } | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -37,8 +39,8 @@ export function FoldersView() {
   const stale = !data || data.path !== path;
   const entries = stale ? null : data.entries;
 
-  const trail = crumbs(path, meta.root);
-  const up = parentPath(path, meta.root);
+  const trail = crumbs(path, diskRoot);
+  const up = parentPath(path, diskRoot);
   const total = (entries ?? []).reduce((s, e) => s + e.size, 0);
   const max = entries?.[0]?.size ?? 0;
   const shown = showAll ? (entries ?? []) : (entries ?? []).slice(0, PAGE);
@@ -47,11 +49,13 @@ export function FoldersView() {
   return (
     <>
       <Header title={t("nav.folders")} subtitle={entries ? `${t("folders.items", { count: formatCount(entries.length) })} · ${formatBytes(total)}` : undefined}>
-        <button type="button" className={`chip${path === meta.home ? " on" : ""}`} onClick={() => openFolder(meta.home)}>
-          <Icon name="home" size={13} />
-          {t("folders.home")}
-        </button>
-        <button type="button" className={`chip${path === meta.root ? " on" : ""}`} onClick={() => openFolder(meta.root)}>
+        {onSystemDisk && (
+          <button type="button" className={`chip${path === meta.home ? " on" : ""}`} onClick={() => openFolder(meta.home)}>
+            <Icon name="home" size={13} />
+            {t("folders.home")}
+          </button>
+        )}
+        <button type="button" className={`chip${path === diskRoot ? " on" : ""}`} onClick={() => openFolder(diskRoot)}>
           <Icon name="disk" size={13} />
           {t("folders.disk")}
         </button>

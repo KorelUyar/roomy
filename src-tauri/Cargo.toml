@@ -1,6 +1,6 @@
 [package]
 name = "roomy"
-version = "0.1.0"
+version = "0.2.0"
 description = "See what is on your disk and free up space."
 authors = ["Korel Uyar"]
 license = "MIT"

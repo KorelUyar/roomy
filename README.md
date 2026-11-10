@@ -3,7 +3,9 @@
 **See what is on your disk. Delete what you don't need.**
 
 Roomy scans your whole computer in a few seconds and shows every app, file and folder sorted by
-size. Tick what you no longer need, press *Delete*, done. For macOS and Windows.
+size, on every disk. Tick what you no longer need, press *Delete*, done. Its Bloat Scanner finds
+software nobody asked for, lists what starts by itself and checks that your system's protections
+are switched on. For macOS and Windows.
 
 <p align="center">
   <img src="docs/screenshots/overview.png" width="820" alt="Roomy overview: free space, what uses the disk, and where to start">
@@ -50,12 +52,43 @@ ask once before the first start:
 - **Folders** — browse the whole disk; every folder shows how big it is.
 - **Cleanup** — things you can remove without missing them: the Trash, app caches, logs, build
   leftovers, installers you already used, downloads you forgot about.
+- **Every disk** — the sidebar lists all internal and external drives (`C:`, `D:`, USB disks,
+  volumes on a Mac). Click one to see what is on it.
 
-Selections carry across all five tabs. One bar at the bottom shows how much you picked.
+Selections carry across the tabs. One bar at the bottom shows how much you picked.
+
+### Bloat Scanner
+
+<p align="center">
+  <img src="docs/screenshots/bloat.png" width="410" alt="Bloat Scanner: unwanted software and startup items">
+  <img src="docs/screenshots/bloat-security.png" width="410" alt="Bloat Scanner: security check">
+</p>
+
+One click checks the whole computer for three things:
+
+- **Unwanted software** — known adware, fake "optimizers" and, on Windows, the trial suites and
+  promotional apps that come preinstalled. Roomy shows whether it is running right now and lets
+  you quit and remove it.
+- **Starts by itself** — everything that launches with your computer or runs in the background:
+  launch agents, daemons and background items on macOS; startup entries on Windows. Entries that
+  are unsigned, start from an odd place, or whose program no longer exists are marked. Your own
+  entries can be switched off with one click.
+- **Security check** — is the disk encrypted, the firewall on, are updates installed
+  automatically? On macOS also Gatekeeper, System Integrity Protection, automatic login and Remote
+  Login; on Windows also Microsoft Defender, User Account Control, SmartScreen and Remote Desktop.
+  Each finding has a button that opens the right page in the system settings.
+
+The Bloat Scanner is not an antivirus. It recognises a short, conservative list of widely unwanted
+software ([`core/src/bloat_db.rs`](core/src/bloat_db.rs)) and reads the settings your system
+exposes.
 
 <p align="center">
   <img src="docs/screenshots/delete.png" width="410" alt="Delete confirmation">
   <img src="docs/screenshots/overview-dark.png" width="410" alt="Dark mode">
+</p>
+<p align="center">
+  <img src="docs/screenshots/disks.png" width="410" alt="A second disk selected in the sidebar">
+  <img src="docs/screenshots/bloat-windows.png" width="410" alt="Bloat Scanner on Windows">
 </p>
 
 The screenshots show sample data.
@@ -68,6 +101,12 @@ The screenshots show sample data.
 - **System folders are locked.** Roomy refuses to delete what the operating system needs
   (`/System`, `C:\Windows`, your Library folder itself, keychains, SSH keys …). The rule is checked
   again in the backend right before anything is deleted.
+- **Whole disks cannot be wiped.** A drive itself and its housekeeping folders are locked too;
+  only what is on it can be selected.
+- **The Bloat Scanner only looks.** The scan changes nothing. Afterwards Roomy can quit only the
+  processes the scan reported as unwanted, and switch off only startup entries of your own
+  account (on macOS the entry goes to the Trash, on Windows it is disabled the way Task Manager
+  does it). Everything that needs an administrator is opened in the system settings instead.
 - **Nothing leaves your computer.** Roomy never connects to the internet. No account, no
   telemetry, no update pings.
 - **Cloud files stay in the cloud.** Files that are only in iCloud or OneDrive are counted as
@@ -76,7 +115,8 @@ The screenshots show sample data.
 On macOS, Roomy works best with *Full Disk Access* (System Settings → Privacy & Security). Without
 it macOS hides Mail, Messages and the Trash; everything else works.
 
-English and German, following the system language. Light and dark mode.
+Roomy starts in English. German can be chosen at the bottom of the sidebar, and the choice is
+remembered. Light and dark mode follow the system.
 
 ## How it works
 
@@ -84,7 +124,7 @@ Roomy is a [Tauri](https://tauri.app) app: a Rust backend and a small React inte
 system web view. The installer is about 5 MB.
 
 ```
-core/        roomy-core: scanner, app discovery, cleanup rules, delete, icons (no UI)
+core/        roomy-core: scanner, app discovery, cleanup rules, bloat scanner, delete, icons (no UI)
 src-tauri/   the desktop app: one window, one `rpc` command that forwards to roomy-core
 src/         the interface (React + TypeScript, no UI library)
 scripts/     screenshots, end-to-end test, macOS installer
@@ -117,16 +157,18 @@ npm run build && npx vite preview --port 4173 &
 open "http://localhost:4173/?bridge=http://127.0.0.1:4599&token=$ROOMY_TOKEN"   # this computer
 open "http://localhost:4173/"                                                    # sample data
 
-node scripts/e2e.mjs                         # deletes two test folders through the real UI
+node scripts/e2e.mjs                         # real UI + real backend: delete, language, disks, bloat scan
 node scripts/shots.mjs --out docs/screenshots # the screenshots above
 ```
 
-`roomy-cli scan | apps | cleanup | selftest` print the same data on the command line.
+`roomy-cli scan | disks | apps | cleanup | bloat | selftest` print the same data on the command line.
 
 ## Not there yet
 
-- Apps from the Microsoft Store are not listed on Windows.
-- Only the system disk is scanned; external drives are skipped.
+- Apps from the Microsoft Store are not listed in the Apps tab on Windows (the Bloat Scanner does
+  know the usual preinstalled ones).
+- Network drives are not scanned.
+- Startup items that belong to all users can be found but not switched off from within Roomy.
 - No duplicate finder.
 
 ## Licence

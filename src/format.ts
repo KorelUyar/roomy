@@ -5,7 +5,7 @@ let homeDir = "";
 let pathSep = "/";
 
 /** macOS counts in powers of 1000, Windows in powers of 1024. Match the OS. */
-export function configureFormat(platform: string, home: string) {
+export function configureFormat(platform: string, home: string, _lang?: string) {
   unitBase = platform === "windows" ? 1024 : 1000;
   pathSep = platform === "windows" ? "\\" : "/";
   homeDir = home;

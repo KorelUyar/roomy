@@ -102,6 +102,30 @@ if (want("cleanup")) {
   await page.locator(".group-head").nth(1).click();
   await page.locator(".group-head .check").nth(1).click();
   await snap("cleanup");
+  await page.locator(".selbar-clear").click();
+}
+
+if (want("bloat")) {
+  await nav(5);
+  await page.waitForSelector(".bloat-intro");
+  await snap("bloat-start");
+  await page.locator(".bloat-intro .btn.primary").click();
+  await page.waitForSelector(".stats", { timeout: 120_000 });
+  await snap("bloat");
+  // The protections are at the end of the list.
+  await page.locator(".content").evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await snap("bloat-security");
+}
+
+// A second disk: pick it in the sidebar, wait for its scan.
+if (want("disk2")) {
+  const disks = page.locator(".disk.pick");
+  if ((await disks.count()) > 1) {
+    await disks.nth(1).click();
+    await nav(0);
+    await page.waitForSelector(".hero", { timeout: 180_000 });
+    await snap("disk2");
+  }
 }
 
 await browser.close();
