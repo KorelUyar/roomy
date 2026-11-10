@@ -207,8 +207,22 @@ pub fn suggestions() -> Vec<CleanGroup> {
     }
 
     // App caches. Apple's own are left alone: the system manages them.
+    const SYSTEM_CACHES: &[&str] = &[
+        "CloudKit",
+        "FamilyCircle",
+        "familycircled",
+        "GeoServices",
+        "PassKit",
+        "GameKit",
+        "Metadata",
+        "askpermissiond",
+        "storeassetd",
+        "storedownloadd",
+        "TemporaryItems",
+        "com.koreluyar.roomy",
+    ];
     let caches = children(&lib.join("Caches"), &|n| {
-        n.starts_with("com.apple.") || n.starts_with('.') || n == "com.koreluyar.roomy" || n == "CloudKit" || n == "FamilyCircle"
+        n.starts_with("com.apple.") || n.starts_with('.') || SYSTEM_CACHES.contains(&n)
     });
     out.extend(group("caches", "safe", "permanent", caches));
 

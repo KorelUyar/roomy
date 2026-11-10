@@ -36,6 +36,8 @@ export function AppsView() {
     return list;
   }, [apps, query, sort]);
 
+  // Windows does not record when a program was last started.
+  const hasUsage = (apps ?? []).some((a) => a.removal === "trash");
   const total = (apps ?? []).reduce((s, a) => s + a.size, 0);
   const max = (apps ?? []).reduce((m, a) => Math.max(m, a.size), 0);
 
@@ -62,7 +64,7 @@ export function AppsView() {
           onChange={(appsSort) => setState({ appsSort })}
           options={[
             { value: "size", label: t("apps.sort.size") },
-            { value: "used", label: t("apps.sort.used") },
+            { value: "used", label: t(hasUsage ? "apps.sort.used" : "apps.sort.installed") },
             { value: "name", label: t("apps.sort.name") },
           ]}
         />

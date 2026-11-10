@@ -31,6 +31,11 @@ export function CleanupView() {
   const safeItems = (groups ?? []).filter((g) => g.safety === "safe").flatMap((g) => g.items.map((i) => sel(g, i)));
   const allSafeSelected = safeItems.length > 0 && safeItems.every((i) => selection.has(i.path));
 
+  // Cache folders are named after bundle ids: show the app's name instead.
+  const apps = useStore((s) => s.apps);
+  const appNames = new Map((apps ?? []).filter((a) => a.bundleId).map((a) => [a.bundleId!.toLowerCase(), a.name]));
+  const label = (name: string) => appNames.get(name.toLowerCase()) ?? name;
+
   const title = (g: CleanGroup) => (g.id === "trash" && platform === "windows" ? t("cleanup.trash.titleWin") : t(`cleanup.${g.id}.title`));
 
   return (
@@ -52,7 +57,7 @@ export function CleanupView() {
         ) : (
           <div className="groups">
             {groups.map((g) => {
-              const items = g.items.map((i) => sel(g, i));
+              const items = g.items.map((i) => ({ ...sel(g, i), name: label(i.name) }));
               const picked = items.filter((i) => selection.has(i.path)).length;
               const expanded = open.has(g.id);
               const single = g.items.length === 1 && g.items[0].path === TRASH_TOKEN;

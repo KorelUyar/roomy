@@ -7,6 +7,13 @@ import "./styles.css";
 const frame = new URLSearchParams(window.location.search).get("frame");
 if (frame) document.documentElement.dataset.frame = frame;
 
+// No "Reload / Inspect Element" menu inside the desktop app.
+if (window.__TAURI_INTERNALS__) {
+  window.addEventListener("contextmenu", (e) => {
+    if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
+  });
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

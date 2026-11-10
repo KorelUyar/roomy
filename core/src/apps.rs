@@ -433,14 +433,12 @@ mod win {
             }
         }
 
-        // The registry size is an estimate written by the installer, and often
-        // missing. Measure the install folder when there is one.
+        // Installers write their size to the registry, but not all of them do
+        // (games installed through a launcher, for example). Only those are
+        // measured: walking every program folder would take too long.
         apps.par_iter_mut().for_each(|app| {
-            if !app.path.is_empty() && !crate::safety::is_hard_protected(Path::new(&app.path)) {
-                let measured = scan::measure(Path::new(&app.path)).0;
-                if measured > app.size {
-                    app.size = measured;
-                }
+            if app.size == 0 && !app.path.is_empty() && !crate::safety::is_hard_protected(Path::new(&app.path)) {
+                app.size = scan::measure(Path::new(&app.path)).0;
             }
             if app.icon.is_empty() && !app.path.is_empty() {
                 // Fall back to the first .exe in the install folder.

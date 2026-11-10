@@ -45,6 +45,8 @@ export function formatAgo(unixSeconds: number | null): string {
 
 /** `/Users/alex/Movies` → `~/Movies` */
 export function shortPath(path: string): string {
+  // "~" means nothing to Windows users.
+  if (pathSep === "\\") return path;
   if (homeDir && path === homeDir) return "~";
   if (homeDir && path.startsWith(homeDir + pathSep)) return "~" + path.slice(homeDir.length);
   return path;

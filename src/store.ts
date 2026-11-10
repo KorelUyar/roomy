@@ -120,7 +120,8 @@ export async function init() {
     switchToDemoData(meta);
     meta = { ...(await api.appInfo()), shotsDir: meta.shotsDir };
   }
-  setLocale(meta.locale);
+  // The web view knows the system language on both macOS and Windows.
+  setLocale(navigator.language || meta.locale);
   configureFormat(meta.platform, meta.home);
   document.documentElement.dataset.platform = meta.platform;
   setState({ meta, folderPath: meta.home });
