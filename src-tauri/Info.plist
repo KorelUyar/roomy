@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Roomy asks Finder to empty the Trash and to move apps that need an administrator password.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Roomy measures how much space the files on your Desktop take.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Roomy measures how much space your documents take.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Roomy measures how much space your downloads take.</string>
+</dict>
+</plist>

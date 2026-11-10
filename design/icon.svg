@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4AA8FF"/>
+      <stop offset="1" stop-color="#0A63F0"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#062a6b" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <!-- macOS icon grid: 824px body on a 1024px canvas -->
+  <g filter="url(#shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#shine)"/>
+  </g>
+  <!-- three bars, biggest first: what takes the most space -->
+  <rect x="262" y="318" width="500" height="92" rx="46" fill="#fff"/>
+  <rect x="262" y="466" width="344" height="92" rx="46" fill="#fff" fill-opacity=".78"/>
+  <rect x="262" y="614" width="196" height="92" rx="46" fill="#fff" fill-opacity=".52"/>
+</svg>

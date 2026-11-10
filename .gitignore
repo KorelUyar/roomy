@@ -1,0 +1,9 @@
+node_modules
+dist
+target
+src-tauri/gen
+.DS_Store
+*.log
+/shots
+/smoke
+/tmp

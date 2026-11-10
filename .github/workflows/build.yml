@@ -1,0 +1,122 @@
+name: Build
+
+# Every push: test the scanner on macOS and Windows and build both apps.
+# A tag like v0.1.0 also publishes them as a GitHub Release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.name }}
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: cargo test -p roomy-core
+
+      - name: Smoke test (scan, apps, icons, cleanup on a real machine)
+        run: cargo run --release -p roomy-core --bin roomy-cli -- selftest smoke
+
+      - name: Build the app (macOS, universal)
+        if: matrix.name == 'macOS'
+        run: |
+          npx tauri build --target universal-apple-darwin --bundles app,dmg
+          mkdir -p out
+          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg out/Roomy-macOS.dmg
+          ditto -c -k --keepParent target/universal-apple-darwin/release/bundle/macos/Roomy.app out/Roomy-macOS.zip
+
+      - name: Build the app (Windows installer)
+        if: matrix.name == 'Windows'
+        shell: pwsh
+        run: |
+          npx tauri build --bundles nsis
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item target/release/bundle/nsis/*-setup.exe out/Roomy-Windows-Setup.exe
+
+      # Proof that the Windows build really starts and draws its window.
+      - name: Launch the app and take a screenshot (Windows)
+        if: matrix.name == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "resolution unchanged" }
+          $env:ROOMY_DEMO = "0"
+          $app = Start-Process -FilePath target/release/roomy.exe -PassThru
+          Start-Sleep -Seconds 40
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("smoke/windows-app.png")
+          Write-Host "app still running:" (-not $app.HasExited)
+          if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Roomy-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.name }}
+          path: smoke/*
+          if-no-files-found: ignore
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: Roomy-*
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Roomy ${tag#v}" --generate-notes
+          gh release upload "$tag" dist/Roomy-macOS.dmg dist/Roomy-macOS.zip dist/Roomy-Windows-Setup.exe scripts/install.sh --clobber
