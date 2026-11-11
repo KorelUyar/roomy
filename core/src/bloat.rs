@@ -9,6 +9,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use crate::tools::run as run_tool;
+
 #[derive(Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Unwanted {
@@ -90,9 +92,7 @@ pub(crate) struct Proc {
     pub start: u64,
 }
 
-/// The processes the last scan reported as unwanted: (pid, start time).
-/// `quit` ends nothing else, so it cannot be turned against other programs.
-static QUITTABLE: std::sync::Mutex<Vec<(u32, u64)>> = std::sync::Mutex::new(Vec::new());
+
 
 /// Every process that is running right now.
 pub(crate) fn processes() -> Vec<Proc> {
@@ -114,74 +114,6 @@ pub(crate) fn processes() -> Vec<Proc> {
             start: p.start_time(),
         })
         .collect()
-}
-
-/// Runs a system tool and returns what it printed (stdout, then stderr).
-/// A tool that does not finish in time is stopped: one stuck command must
-/// never keep the whole scan waiting.
-#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
-fn run_tool(mut command: std::process::Command, timeout: std::time::Duration) -> String {
-    use std::io::Read;
-    use std::process::Stdio;
-    use std::sync::{mpsc, Arc, Mutex};
-    use std::time::Duration;
-
-    let Ok(mut child) = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    else {
-        return String::new();
-    };
-
-    // Both streams are read while the tool runs, so a full pipe cannot block
-    // it. What has arrived is kept in a shared buffer: it is still there when
-    // the tool is stopped, or when something it started keeps the pipe open.
-    let (done, finished) = mpsc::channel::<()>();
-    let collect = |stream: Option<Box<dyn Read + Send>>| {
-        let buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
-        let (into, done) = (buffer.clone(), done.clone());
-        std::thread::spawn(move || {
-            if let Some(mut stream) = stream {
-                let mut chunk = [0u8; 8192];
-                while let Ok(n) = stream.read(&mut chunk) {
-                    if n == 0 {
-                        break;
-                    }
-                    if let Ok(mut all) = into.lock() {
-                        all.extend_from_slice(&chunk[..n]);
-                    }
-                }
-            }
-            let _ = done.send(());
-        });
-        buffer
-    };
-    let out = collect(child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>));
-    let err = collect(child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>));
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break;
-            }
-        }
-    }
-    // The tool is gone; give the readers a moment to see the end of both streams.
-    let patience = Instant::now() + Duration::from_millis(500);
-    for _ in 0..2 {
-        if finished.recv_timeout(patience.saturating_duration_since(Instant::now())).is_err() {
-            break;
-        }
-    }
-    let text = |buffer: &Arc<Mutex<Vec<u8>>>| buffer.lock().map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
-    text(&out) + &text(&err)
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -275,9 +207,7 @@ pub fn scan() -> BloatReport {
         .flat_map(|u| u.pids.iter())
         .filter_map(|pid| procs.iter().find(|p| p.pid == *pid).map(|p| (p.pid, p.start)))
         .collect();
-    if let Ok(mut quittable) = QUITTABLE.lock() {
-        *quittable = reported;
-    }
+    crate::quit::allow("bloat", reported);
     report.duration_ms = started.elapsed().as_millis() as u64;
     report
 }
@@ -285,34 +215,7 @@ pub fn scan() -> BloatReport {
 /// Ends processes that the last scan reported as unwanted. Anything else in
 /// `pids` is ignored. Returns how many were stopped.
 pub fn quit(pids: &[u32]) -> usize {
-    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-    let Ok(mut sys) = System::new() else {
-        return 0;
-    };
-    let reported = QUITTABLE.lock().map(|q| q.clone()).unwrap_or_default();
-    let own = std::process::id();
-    let wanted: Vec<Pid> = pids
-        .iter()
-        .filter(|&&p| p > 1 && p != own && reported.iter().any(|(pid, _)| *pid == p))
-        .map(|&p| Pid::from_u32(p))
-        .collect();
-    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&wanted), true, ProcessRefreshKind::nothing());
-    let mut stopped = 0;
-    for pid in &wanted {
-        if let Some(process) = sys.process(*pid) {
-            // Still the process that was reported, not a newer one with its number.
-            let same = reported.iter().any(|(p, start)| *p == pid.as_u32() && *start == process.start_time());
-            if !same {
-                continue;
-            }
-            // Ask politely where the system supports it, insist otherwise.
-            let asked = process.kill_with(sysinfo::Signal::Term).unwrap_or(false);
-            if asked || process.kill() {
-                stopped += 1;
-            }
-        }
-    }
-    stopped
+    crate::quit::quit("bloat", pids)
 }
 
 #[cfg(target_os = "macos")]
@@ -459,6 +362,10 @@ mod mac {
     }
 
     fn read_plist(path: &Path) -> Option<Plist> {
+        // Only a real, small file is read: a pipe put there in its place would hold the scan up for good.
+        if !fs::metadata(path).map(|md| md.is_file() && md.len() < 1024 * 1024).unwrap_or(false) {
+            return None;
+        }
         let dict = plist::Value::from_file(path).ok()?.into_dictionary()?;
         let label = dict.get("Label")?.as_string()?.to_string();
         let mut arguments: Vec<String> = Vec::new();
@@ -686,7 +593,8 @@ mod mac {
             if fw.contains("enabled") {
                 "ok"
             } else if fw.contains("disabled") {
-                "warn"
+                // The way macOS ships: worth knowing, not a fault.
+                "info"
             } else {
                 "unknown"
             },
@@ -1164,27 +1072,5 @@ mod tests {
         let mut command = std::process::Command::new("/bin/sh");
         command.args(["-c", "echo out; echo err >&2"]);
         assert_eq!(run_tool(command, std::time::Duration::from_secs(5)), "out\nerr\n");
-    }
-
-    #[test]
-    fn quit_only_ends_what_the_scan_reported() {
-        let mut child = std::process::Command::new("/bin/sleep").arg("30").spawn().unwrap();
-        let pid = child.id();
-
-        // Not reported by a scan: left alone.
-        *QUITTABLE.lock().unwrap() = Vec::new();
-        assert_eq!(quit(&[pid]), 0);
-        assert!(child.try_wait().unwrap().is_none(), "the process must still be running");
-
-        // Same number, other start time (a different process): left alone.
-        let start = processes().iter().find(|p| p.pid == pid).map(|p| p.start).unwrap();
-        *QUITTABLE.lock().unwrap() = vec![(pid, start + 100)];
-        assert_eq!(quit(&[pid]), 0);
-        assert!(child.try_wait().unwrap().is_none(), "the process must still be running");
-
-        // Reported: ended.
-        *QUITTABLE.lock().unwrap() = vec![(pid, start)];
-        assert_eq!(quit(&[pid]), 1);
-        let _ = child.wait();
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "roomy-core"
-version = "0.2.0"
+version = "0.3.0"
 description = "Disk scanning, app discovery and cleanup logic behind Roomy."
 authors = ["Korel Uyar"]
 license = "MIT"
@@ -20,9 +20,11 @@ libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "1"
+# YARA rules, to read Apple's XProtect signatures (macOS only: Windows asks Defender).
+boreal = { version = "1.4", default-features = false, features = ["hash"] }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSData", "NSDictionary", "NSURL", "NSError", "NSValue", "NSArray", "NSGeometry", "NSFileManager"] }
-objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSRunningApplication", "NSGraphicsContext", "objc2-core-graphics"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSRunningApplication", "NSGraphicsContext", "objc2-core-graphics", "libc"] }
 objc2-core-graphics = { version = "0.3", features = ["CGImage"] }
 
 [target.'cfg(windows)'.dependencies]

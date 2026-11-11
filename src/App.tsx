@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, TRASH_TOKEN, type DeleteRequest, type RelatedItem } from "./api";
+import { flaggedStartup, openThreats, securityToCheck } from "./findings";
 import { formatBytes, shortPath } from "./format";
 import { formatCount, t, tn } from "./i18n";
 import { Icon } from "./icons";
@@ -26,15 +27,24 @@ import { BloatView } from "./views/Bloat";
 import { CleanupView } from "./views/Cleanup";
 import { FilesView } from "./views/Files";
 import { FoldersView } from "./views/Folders";
+import { HealthView } from "./views/Health";
 import { OverviewView } from "./views/Overview";
+import { ProtectionView } from "./views/Protection";
 
-const NAV: { view: View; icon: string }[] = [
-  { view: "overview", icon: "overview" },
-  { view: "apps", icon: "apps" },
-  { view: "files", icon: "file" },
-  { view: "folders", icon: "folder" },
-  { view: "cleanup", icon: "cleanup" },
-  { view: "bloat", icon: "bloat" },
+// How the computer is doing, what takes up space, and what should not be there.
+const NAV: { view: View; icon: string }[][] = [
+  [{ view: "health", icon: "pulse" }],
+  [
+    { view: "overview", icon: "overview" },
+    { view: "cleanup", icon: "cleanup" },
+    { view: "files", icon: "file" },
+    { view: "folders", icon: "folder" },
+    { view: "apps", icon: "apps" },
+  ],
+  [
+    { view: "protection", icon: "shield" },
+    { view: "bloat", icon: "bloat" },
+  ],
 ];
 
 function Sidebar() {
@@ -43,15 +53,18 @@ function Sidebar() {
   const diskRoot = useStore((s) => s.diskRoot);
   const scans = useStore((s) => s.scans);
   const overviews = useStore((s) => s.overviews);
-  const apps = useStore((s) => s.apps);
-  const cleanup = useStore((s) => s.cleanup);
-  const overview = useStore((s) => s.overview);
+  const bloat = useStore((s) => s.bloat);
+  const malware = useStore((s) => s.malware);
+  const intended = useStore((s) => s.intended);
+  const demo = useStore((s) => s.meta?.demo);
   const lang = useStore((s) => s.lang);
+  // A disk is "the one being looked at" only where a tab is about one disk.
+  const diskTab = view === "overview" || view === "files" || view === "folders";
 
-  const hint: Partial<Record<View, number>> = {
-    apps: apps?.reduce((s, a) => s + a.size, 0),
-    files: overview?.bigFileSize,
-    cleanup: cleanup?.reduce((s, g) => s + g.size, 0),
+  // A dot where something wants to be looked at.
+  const attention: Partial<Record<View, boolean>> = {
+    protection: openThreats(malware).length > 0 || securityToCheck(bloat, intended).length > 0,
+    bloat: (bloat?.unwanted.length ?? 0) > 0 || flaggedStartup(bloat) > 0,
   };
 
   return (
@@ -65,14 +78,20 @@ function Sidebar() {
           </span>
           Roomy
         </span>
+        {demo && <span className="pill">{t("overview.demo")}</span>}
       </div>
       <nav className="nav">
-        {NAV.map((item) => (
-          <button key={item.view} type="button" className={`nav-item${view === item.view ? " on" : ""}`} onClick={() => navigate(item.view)}>
-            <Icon name={item.icon} size={16} />
-            <span>{t(`nav.${item.view}`)}</span>
-            {hint[item.view] ? <em>{formatBytes(hint[item.view]!)}</em> : null}
-          </button>
+        {NAV.map((group, i) => (
+          <Fragment key={group[0].view}>
+            {i > 0 && <span className="nav-gap" />}
+            {group.map((item) => (
+              <button key={item.view} type="button" data-view={item.view} className={`nav-item${view === item.view ? " on" : ""}`} onClick={() => navigate(item.view)}>
+                <Icon name={item.icon} size={16} />
+                <span>{t(`nav.${item.view}`)}</span>
+                {attention[item.view] && <i className="nav-dot" title={t("nav.attention")} />}
+              </button>
+            ))}
+          </Fragment>
         ))}
       </nav>
       <div className="sidebar-fill" data-tauri-drag-region />
@@ -86,7 +105,7 @@ function Sidebar() {
           const selected = d.root === diskRoot;
           const usedPct = disk.total > 0 ? (disk.used / disk.total) * 100 : 0;
           return (
-            <div key={d.root} className={`disk${selected ? " on" : ""}${disks.length > 1 ? " pick" : ""}`} onClick={() => selectDisk(d.root)}>
+            <div key={d.root} className={`disk${selected && diskTab ? " on" : ""}${disks.length > 1 ? " pick" : ""}`} onClick={() => selectDisk(d.root)}>
               <div className="disk-name">
                 <Icon name={d.system ? "disk" : "external"} size={13} />
                 <span>{disk.name}</span>
@@ -342,11 +361,13 @@ export function App() {
         )}
       <Sidebar />
       <main className={`main${hasSelection ? " has-selection" : ""}`}>
+        {view === "health" && <HealthView />}
         {view === "overview" && <OverviewView />}
         {view === "apps" && <AppsView />}
         {view === "files" && <FilesView />}
         {view === "folders" && <FoldersView />}
         {view === "cleanup" && <CleanupView />}
+        {view === "protection" && <ProtectionView />}
         {view === "bloat" && <BloatView />}
         <SelectionBar />
         <Toasts />

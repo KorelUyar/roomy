@@ -10,18 +10,45 @@ import {
   type AppMeta,
   type BloatReport,
   type CleanGroup,
+  type Consumer,
   type DeleteMode,
   type DeleteOutcome,
   type DeleteRequest,
   type DiskInfo,
+  type Health,
   type Kind,
+  type MalwareStatus,
   type Overview,
+  type ScanScope,
   type ScanStatus,
 } from "./api";
+import { SAMPLE_CPU } from "./mock";
 import { configureFormat, formatBytes } from "./format";
 import { initLanguage, setLanguage, t, tn, type Lang } from "./i18n";
 
-export type View = "overview" | "apps" | "files" | "folders" | "cleanup" | "bloat";
+export type View = "health" | "overview" | "apps" | "files" | "folders" | "cleanup" | "protection" | "bloat";
+
+/** The check-up of the Health tab: which step it is at, and when it last finished. */
+export interface Check {
+  running: boolean;
+  step: number;
+  at: number | null;
+  /** Did the last check-up get through all of its steps (a malware scan that was stopped or failed does not count)? */
+  complete: boolean;
+}
+
+/** What is remembered of the last finished malware scan (kept between starts). */
+export interface LastScan {
+  at: number;
+  scope: ScanScope;
+  files: number;
+  threats: number;
+}
+
+const LAST_SCAN_KEY = "roomy.lastScan";
+const INTENDED_KEY = "roomy.intended";
+/** How many processor readings the little chart shows. */
+export const CPU_POINTS = 40;
 
 const IDLE: ScanStatus = { state: "idle", files: 0, bytes: 0, current: "" };
 
@@ -65,6 +92,16 @@ export interface State {
   overview: Overview | null;
   bloat: BloatReport | null;
   bloatBusy: boolean;
+  /** How the computer is doing right now; refreshed while the Health tab is open. */
+  health: Health | null;
+  cpuHistory: number[];
+  /** Consumers that were asked to quit and have not gone yet (by path). */
+  quitting: string[];
+  malware: MalwareStatus | null;
+  lastScan: LastScan | null;
+  check: Check;
+  /** Security settings the user said are the way they want them (by id). */
+  intended: string[];
   apps: AppInfo[] | null;
   cleanup: CleanGroup[] | null;
   /** Bumps whenever the disk changed, so lists know to reload. */
@@ -86,11 +123,32 @@ let state: State = {
   scans: {},
   overviews: {},
   disk: null,
-  view: "overview",
+  view: "health",
   scan: IDLE,
   overview: null,
   bloat: null,
   bloatBusy: false,
+  health: null,
+  cpuHistory: [],
+  quitting: [],
+  malware: null,
+  lastScan: (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_SCAN_KEY) ?? "null") as LastScan | null;
+      return saved && typeof saved.at === "number" ? saved : null;
+    } catch {
+      return null;
+    }
+  })(),
+  check: { running: false, step: 0, at: null, complete: false },
+  intended: (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(INTENDED_KEY) ?? "[]") as unknown;
+      return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  })(),
   apps: null,
   cleanup: null,
   version: 0,
@@ -152,8 +210,11 @@ export async function init() {
   document.documentElement.dataset.platform = meta.platform;
   const disks = await api.listDisks().catch(() => []);
   const diskRoot = disks.find((d) => d.system)?.root ?? meta.root;
-  setState({ meta, lang, disks, diskRoot, folderPath: meta.home });
+  // The sample computer comes with a few minutes of processor history.
+  setState({ meta, lang, disks, diskRoot, folderPath: meta.home, cpuHistory: meta.demo ? SAMPLE_CPU.slice(0, -1) : [] });
   void refreshLists();
+  void pollHealth(true);
+  void loadMalware();
   await scanDisk(diskRoot);
 }
 
@@ -214,9 +275,13 @@ export function rescan() {
 
 /** Shows another disk. It is scanned the first time it is opened. */
 export function selectDisk(root: string) {
-  if (root === state.diskRoot) return;
+  if (root === state.diskRoot) {
+    // Already the one in view: from a tab that is not about a disk, a click still means "show me this disk".
+    if (state.view !== "overview" && state.view !== "files" && state.view !== "folders") setState({ view: "overview" });
+    return;
+  }
   const disk = state.disks.find((d) => d.root === root);
-  setState({ diskRoot: root, folderPath: disk?.system && state.meta ? state.meta.home : root, view: state.view === "apps" || state.view === "cleanup" || state.view === "bloat" ? "overview" : state.view });
+  setState({ diskRoot: root, folderPath: disk?.system && state.meta ? state.meta.home : root, view: state.view === "files" || state.view === "folders" ? state.view : "overview" });
   if (!state.scans[root] || state.scans[root].state === "idle") void scanDisk(root);
 }
 
@@ -258,6 +323,190 @@ export async function refreshBloat() {
   } catch {
     /* keep what is shown */
   }
+}
+
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+
+let healthTimer = 0;
+let healthWatchers = 0;
+
+let healthReadings = 0;
+
+/** Reads the live numbers. The regular refresh rests while nobody is looking. */
+async function pollHealth(always = false) {
+  if (document.hidden && !always) return;
+  try {
+    const health = await api.health();
+    healthReadings += 1;
+    // The very first reading is Roomy starting up, not the computer at work: it is shown, but not drawn.
+    const cpuHistory = healthReadings === 1 && !state.meta?.demo ? state.cpuHistory : [...state.cpuHistory, health.cpu].slice(-CPU_POINTS);
+    setState({ health, cpuHistory });
+  } catch {
+    /* keep what is shown */
+  }
+}
+
+/** Reads the live numbers now, whether or not the window can be seen. */
+export const refreshHealth = () => pollHealth(true);
+
+/** Keeps the live numbers fresh while something on screen shows them. Returns how to stop. */
+export function watchHealth(): () => void {
+  healthWatchers += 1;
+  if (healthWatchers === 1) {
+    void pollHealth();
+    healthTimer = window.setInterval(() => void pollHealth(), 2500);
+  }
+  return () => {
+    healthWatchers -= 1;
+    if (healthWatchers === 0) window.clearInterval(healthTimer);
+  };
+}
+
+/** Asks an app to quit, the polite way: it may still ask to save. */
+export async function quitConsumer(consumer: Consumer) {
+  setState({ quitting: [...state.quitting, consumer.path] });
+  try {
+    const asked = await api.healthQuit(consumer.pids);
+    if (asked > 0) toast(t("health.quitAsked", { name: consumer.name }));
+    else toast(t("health.quitFailed", { name: consumer.name }), "warn");
+  } catch (error) {
+    toast(t("toast.error", { error: String(error) }), "warn");
+  }
+  // Give it a moment to go, then look again.
+  window.setTimeout(() => {
+    setState({ quitting: state.quitting.filter((path) => path !== consumer.path) });
+    void pollHealth(true);
+  }, 1600);
+}
+
+// ---------------------------------------------------------------------------
+// Malware scan
+// ---------------------------------------------------------------------------
+
+let malwareTimer = 0;
+/** The scan being followed right now. There is only ever one: whoever asks again gets the same answer. */
+let following: Promise<MalwareStatus | null> | null = null;
+
+/** Which scanner there is, and whether a scan is already running. */
+export async function loadMalware() {
+  try {
+    const malware = await api.malwareStatus();
+    setState({ malware });
+    if (malware.state === "scanning") void followScan();
+  } catch {
+    /* an older backend: the tab says so */
+  }
+}
+
+/** Remembers the outcome of a scan for the next start (not of the sample computer's). */
+function rememberScan(lastScan: LastScan) {
+  if (!state.meta?.demo) {
+    try {
+      localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(lastScan));
+    } catch {
+      /* private mode */
+    }
+  }
+  setState({ lastScan });
+}
+
+function followScan(): Promise<MalwareStatus | null> {
+  if (following) return following;
+  following = new Promise<MalwareStatus | null>((resolve) => {
+    malwareTimer = window.setInterval(async () => {
+      const malware = await api.malwareStatus().catch(() => null);
+      // Answers can overtake each other: only the first one that says "over" ends the following.
+      if (!malware || !following) return;
+      setState({ malware });
+      if (malware.state === "scanning") return;
+      window.clearInterval(malwareTimer);
+      following = null;
+      if (malware.state === "done" && !malware.cancelled) {
+        rememberScan({ at: Date.now(), scope: malware.scope, files: malware.files, threats: malware.threats.filter((x) => !x.handled && !x.test).length });
+      }
+      resolve(malware);
+    }, 250);
+  });
+  return following;
+}
+
+/** Starts a scan and resolves when it is over. */
+export async function scanMalware(scope: ScanScope): Promise<MalwareStatus | null> {
+  if (!state.malware) await loadMalware();
+  const before = state.malware;
+  if (!before || before.state === "scanning") return null;
+  try {
+    await api.malwareStart(scope);
+  } catch (error) {
+    toast(t("toast.error", { error: String(error) }), "warn");
+    return null;
+  }
+  setState({ malware: { ...before, state: "scanning", scope, files: 0, bytes: 0, current: "", skipped: 0, threats: [], durationMs: 0, cancelled: false, error: null } });
+  return followScan();
+}
+
+export function stopMalwareScan() {
+  void api.malwareCancel();
+}
+
+/** Roomy scans itself on a Mac; on Windows Microsoft Defender does, and takes its time. */
+export function scansQuickly(): boolean {
+  return state.malware?.engine.engine === "xprotect" && state.malware.engine.available;
+}
+
+/**
+ * The check-up: security settings, startup items and unwanted software (one
+ * scan of the Bloat Scanner), then a quick malware scan where Roomy does that itself.
+ */
+export async function checkAll() {
+  if (state.check.running) return;
+  const before = state.check;
+  const step = (n: number) => setState({ check: { ...before, running: true, step: n } });
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  step(0);
+  if (!state.malware) await loadMalware();
+  // The first three steps are one scan: let them tick by while it runs.
+  const ticking = window.setInterval(() => state.check.running && state.check.step < 2 && step(state.check.step + 1), 480);
+  try {
+    const started = Date.now();
+    const bloat = await api.bloatScan();
+    await pause(Math.max(0, 1500 - (Date.now() - started)));
+    window.clearInterval(ticking);
+    setState({ bloat });
+    let complete = true;
+    if (scansQuickly()) {
+      step(3);
+      const scanned = Date.now();
+      // A scan that is running already (a full one, started in Protection) is waited for rather than doubled.
+      const result = state.malware?.state === "scanning" ? await followScan() : await scanMalware("quick");
+      complete = result?.state === "done" && !result.cancelled;
+      await pause(Math.max(0, 700 - (Date.now() - scanned)));
+    }
+    setState({ check: { running: false, step: 0, at: Date.now(), complete } });
+  } catch (error) {
+    toast(t("toast.error", { error: String(error) }), "warn");
+    setState({ check: { ...before, running: false } });
+  } finally {
+    window.clearInterval(ticking);
+  }
+}
+
+/** "Yes, I want it that way": a security setting stops counting as something to look at (or counts again). */
+export function toggleIntended(id: string) {
+  const intended = state.intended.includes(id) ? state.intended.filter((x) => x !== id) : [...state.intended, id];
+  try {
+    localStorage.setItem(INTENDED_KEY, JSON.stringify(intended));
+  } catch {
+    /* private mode */
+  }
+  setState({ intended });
+}
+
+/** The security settings come with the Bloat Scanner's report: fetch it quietly when nobody has yet. */
+export function ensureBloat() {
+  if (!state.bloat && !state.bloatBusy && !state.check.running) void refreshBloat();
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +608,14 @@ export async function runDelete(requests: DeleteRequest[]) {
   const selection = new Map(state.selection);
   for (const outcome of outcomes) if (outcome.ok) selection.delete(outcome.path);
   setState({ deleting: null, confirmOpen: false, selection });
+  // A threat that was removed is no longer one.
+  const gone = new Set(outcomes.filter((o) => o.ok).map((o) => o.path));
+  if (state.malware?.threats.some((x) => gone.has(x.container ?? x.path))) {
+    const threats = state.malware.threats.filter((x) => !gone.has(x.container ?? x.path));
+    setState({ malware: { ...state.malware, threats } });
+    // What is remembered for the next start must not keep counting it either.
+    if (state.lastScan) rememberScan({ ...state.lastScan, threats: threats.filter((x) => !x.handled && !x.test).length });
+  }
 
   const trashed = outcomes.filter((o) => o.ok && o.trashed).reduce((s, o) => s + o.freed, 0);
   const freed = outcomes.filter((o) => o.ok && !o.trashed).reduce((s, o) => s + o.freed, 0);

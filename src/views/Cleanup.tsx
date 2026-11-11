@@ -75,13 +75,14 @@ export function CleanupView() {
                     ) : (
                       <Checkbox checked={picked === items.length} mixed={picked > 0 && picked < items.length} onChange={() => setSelected(items, picked !== items.length)} />
                     )}
-                    <span className={`card-icon clean-${g.safety}`}>
+                    <span className="card-icon">
                       <Icon name={CLEAN_ICON[g.id]} size={18} />
                     </span>
                     <span className="row-main">
                       <span className="row-title">
                         {title(g)}
-                        <span className={`tag ${g.safety}`}>{t(g.safety === "safe" ? "cleanup.safe" : "cleanup.review")}</span>
+                        {/* Safe is the rule here; only the exception gets a word. */}
+                        {g.safety === "review" && <span className="tag review">{t("cleanup.review")}</span>}
                       </span>
                       <span className="row-sub">{g.unknown ? t("cleanup.trash.unknown") : t(`cleanup.${g.id}.desc`)}</span>
                     </span>

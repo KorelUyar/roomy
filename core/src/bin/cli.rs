@@ -4,6 +4,8 @@
 //!   roomy-cli disks            list the disks Roomy would show
 //!   roomy-cli apps             list installed apps
 //!   roomy-cli bloat            run the Bloat Scanner (read-only)
+//!   roomy-cli health           processor, memory, battery, disk health, what uses the most memory
+//!   roomy-cli malware [full]   check files against the system's malware signatures (read-only)
 //!   roomy-cli cleanup          list cleanup suggestions
 //!   roomy-cli icon PATH OUT    write the icon of PATH to OUT (png)
 //!   roomy-cli selftest [DIR]   run every read-only code path once (CI smoke test)
@@ -11,7 +13,7 @@
 //!                              testing the interface in a normal browser
 
 use roomy_core::engine::Engine;
-use roomy_core::{apps, bloat, browse, cleanup, icons, platform, scan};
+use roomy_core::{apps, bloat, browse, cleanup, health, icons, malware, platform, scan};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -217,6 +219,41 @@ fn main() {
                 );
             }
         }
+        Some("health") => {
+            let h = health::snapshot();
+            println!("{} · {} · {} ({} cores)", h.host, h.os, h.cpu_brand, h.cores);
+            println!("processor {:.0} %   memory {} of {} used ({} available, pressure {})   swap {}", h.cpu, human(h.memory_used), human(h.memory_total), human(h.memory_available), h.pressure, human(h.swap_used));
+            println!("up for {:.1} days   system disk: {}", h.uptime as f64 / 86400.0, h.disk_health);
+            match &h.battery {
+                Some(b) => println!("battery: {:?} %  charging {}  plugged {}  cycles {:?}  holds {:?} %  condition {}", b.percent, b.charging, b.plugged, b.cycles, b.max_capacity, b.condition),
+                None => println!("battery: none"),
+            }
+            println!("\nusing the most memory:");
+            for c in &h.top {
+                println!("  {:<28} {:>10}  {:>5.1} %{}", c.name.chars().take(28).collect::<String>(), human(c.memory), c.cpu, if c.can_quit { "  (can be asked to quit)" } else { "" });
+            }
+        }
+        Some("malware") => {
+            let info = malware::info();
+            println!("engine: {} (available {}), signatures {} version {}, updated {}", info.engine, info.available, info.rules, info.version, info.updated);
+            let scope = if args.get(1).map(String::as_str) == Some("full") { "full" } else { "quick" };
+            if let Err(e) = malware::start(scope) {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+            malware::wait();
+            let st = malware::status();
+            println!("{} scan {}: {} files, {} read, {} unreadable, {:.1}s", st.scope, st.state, st.files, human(st.bytes), st.skipped, st.duration_ms as f64 / 1000.0);
+            if let Some(e) = &st.error {
+                println!("error: {e}");
+            }
+            for t in &st.threats {
+                println!("  {}  {}{}", t.signature, t.path, if t.test { "  (test file)" } else { "" });
+            }
+            if st.threats.is_empty() && st.state == "done" {
+                println!("nothing found");
+            }
+        }
         Some("bloat") => {
             let report = bloat::scan();
             println!("{} processes looked at in {:.1}s", report.processes, report.duration_ms as f64 / 1000.0);
@@ -355,12 +392,18 @@ fn main() {
             for u in &report.unwanted {
                 println!("  unwanted {} [{} / {}]", u.name, u.reason, u.removal);
             }
+            let h = health::snapshot();
+            println!("health: {} · {} · {} cores · processor {:.0} % · memory {} of {} · pressure {} · disk {} · battery {}", h.os, h.cpu_brand, h.cores, h.cpu, human(h.memory_used), human(h.memory_total), h.pressure, h.disk_health, if h.battery.is_some() { "yes" } else { "none" });
+            assert!(h.cores > 0 && h.memory_total > 0, "no health data");
+            // Which engine there is (no scan here: on Windows that is Defender's business and takes minutes).
+            let engine = malware::info();
+            println!("malware engine: {} · available {} · {} signatures · version {}", engine.engine, engine.available, engine.rules, engine.version);
             assert!(report.processes > 0, "no processes listed");
             assert!(!report.security.is_empty(), "no security checks");
             println!("selftest ok");
         }
         _ => {
-            eprintln!("usage: roomy-cli scan [PATH] | disks | apps [APP] | cleanup | bloat | icon PATH OUT | selftest [DIR] | serve PORT TOKEN");
+            eprintln!("usage: roomy-cli scan [PATH] | disks | apps [APP] | cleanup | bloat | health | malware [full] | icon PATH OUT | selftest [DIR] | serve PORT TOKEN");
             std::process::exit(2);
         }
     }

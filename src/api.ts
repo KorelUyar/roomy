@@ -225,6 +225,91 @@ export interface BloatReport {
   durationMs: number;
 }
 
+export interface Battery {
+  /** Charge right now, 0–100. */
+  percent: number | null;
+  charging: boolean;
+  plugged: boolean;
+  cycles: number | null;
+  /** What the battery still holds compared with when it was new, 0–100. */
+  maxCapacity: number | null;
+  condition: "good" | "service" | "unknown";
+}
+
+/** An app (all its processes together) or a single process. */
+export interface Consumer {
+  name: string;
+  path: string;
+  memory: number;
+  /** Share of the whole processor, 0–100. */
+  cpu: number;
+  pids: number[];
+  canQuit: boolean;
+  /** An app the user knows by name; everything else is a background program. */
+  app: boolean;
+}
+
+export interface Health {
+  os: string;
+  host: string;
+  cpuBrand: string;
+  cores: number;
+  /** Load of the whole processor right now, 0–100. */
+  cpu: number;
+  memoryTotal: number;
+  memoryUsed: number;
+  memoryAvailable: number;
+  swapUsed: number;
+  pressure: "normal" | "warn" | "critical" | "unknown";
+  /** Seconds since the computer was started. */
+  uptime: number;
+  battery: Battery | null;
+  /** What the system disk says about itself (S.M.A.R.T.). */
+  diskHealth: "ok" | "failing" | "unknown";
+  top: Consumer[];
+}
+
+export interface MalwareEngine {
+  /** Apple's XProtect signatures (macOS), Microsoft Defender (Windows), or nothing. */
+  engine: "xprotect" | "defender" | "none";
+  available: boolean;
+  version: string;
+  rules: number;
+  /** Seconds since 1970, 0 = unknown. */
+  updated: number;
+}
+
+export interface Threat {
+  path: string;
+  name: string;
+  signature: string;
+  size: number;
+  modified: number;
+  /** The app the file is part of: that is what should go. */
+  container: string | null;
+  /** The engine has dealt with it already (Microsoft Defender does). */
+  handled: boolean;
+  /** The harmless test file every scanner is expected to find. */
+  test: boolean;
+}
+
+export type ScanScope = "quick" | "full";
+
+export interface MalwareStatus {
+  state: "idle" | "scanning" | "done" | "failed";
+  scope: ScanScope;
+  files: number;
+  bytes: number;
+  current: string;
+  skipped: number;
+  threats: Threat[];
+  started: number;
+  durationMs: number;
+  cancelled: boolean;
+  error: string | null;
+  engine: MalwareEngine;
+}
+
 export const TRASH_TOKEN = "::trash";
 
 export interface Transport {
@@ -326,5 +411,10 @@ export const api = {
   bloatQuit: (pids: number[]) => transport.call<number>("bloat_quit", { pids }),
   bloatRemovePackage: (id: string) => transport.call<null>("bloat_remove_package", { id }),
   openSettings: (id: string) => transport.call<null>("open_settings", { id }),
+  health: () => transport.call<Health>("health"),
+  healthQuit: (pids: number[]) => transport.call<number>("health_quit", { pids }),
+  malwareStart: (scope: ScanScope) => transport.call<null>("malware_start", { scope }),
+  malwareStatus: () => transport.call<MalwareStatus>("malware_status"),
+  malwareCancel: () => transport.call<null>("malware_cancel"),
   iconUrl: (path: string, size: number) => transport.iconUrl(path, size),
 };

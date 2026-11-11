@@ -93,7 +93,7 @@ export function AppsView() {
                   <span className="row-main">
                     <span className="row-title">
                       {app.name}
-                      {app.running && <span className="tag">{t("apps.running")}</span>}
+                      {app.running && <span className="tag live">{t("apps.running")}</span>}
                     </span>
                     <span className="row-sub">{detail(app)}</span>
                   </span>

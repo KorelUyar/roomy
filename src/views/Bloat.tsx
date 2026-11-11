@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { api, type SecurityCheck, type StartupItem, type Unwanted } from "../api";
+import { api, type StartupItem, type Unwanted } from "../api";
 import { formatBytes, shortPath } from "../format";
-import { formatCount, hasText, t, tn, tx } from "../i18n";
+import { formatCount, t } from "../i18n";
 import { Icon } from "../icons";
 import { refreshBloat, refreshLists, scanBloat, setSelected, setState, toast, useStore, type SelItem } from "../store";
 import { FileIcon, Header } from "../ui";
 
-const STEPS = ["software", "startup", "processes", "security"] as const;
+const STEPS = ["software", "startup", "processes"] as const;
 const FIRST = 10;
 
 function Intro({ busy }: { busy: boolean }) {
@@ -74,7 +74,7 @@ function UnwantedRow({ item }: { item: Unwanted }) {
 
   return (
     <div className="row tall">
-      <FileIcon path={item.icon || null} kind="app" size={36} name={item.name} />
+      <FileIcon path={item.icon || null} kind="app" size={32} name={item.name} />
       <span className="row-main">
         <span className="row-title">
           {item.name}
@@ -100,7 +100,16 @@ function UnwantedRow({ item }: { item: Unwanted }) {
 
 function StartupRow({ item, reveal }: { item: StartupItem; reveal: string }) {
   const [busy, setBusy] = useState(false);
-  const details = [item.vendor, t(`bloat.kind.${item.kind}`), item.scope === "system" ? t("bloat.scope.system") : null, item.program ? shortPath(item.program) : null]
+  // One word in colour says why a row stands out; the rest is plain text.
+  const reason = (["unwanted", "suspicious", "leftover"] as const).find((flag) => item.flags.includes(flag));
+  const details = [
+    item.vendor,
+    t(`bloat.kind.${item.kind}`),
+    item.scope === "system" ? t("bloat.scope.system") : null,
+    item.flags.includes("unsigned") ? t("bloat.flag.unsigned") : null,
+    item.enabled ? null : t("bloat.off"),
+    item.program ? shortPath(item.program) : null,
+  ]
     .filter(Boolean)
     .join("  ·  ");
 
@@ -119,19 +128,27 @@ function StartupRow({ item, reveal }: { item: StartupItem; reveal: string }) {
 
   return (
     <div className={`row tall${item.enabled ? "" : " muted"}`}>
-      <FileIcon path={item.icon || null} kind="app" size={32} name={item.name} />
+      {item.icon ? (
+        <FileIcon path={item.icon} kind="app" size={32} name={item.name} />
+      ) : (
+        // No app behind it, so no face: one quiet sign for all of these.
+        <span className="tile tile-other" style={{ width: 32, height: 32, borderRadius: 9 }}>
+          <Icon name="power" size={16} stroke={1.7} />
+        </span>
+      )}
       <span className="row-main">
         <span className="row-title">
           {item.name}
-          {item.flags.map((flag) => (
-            <span key={flag} className={`tag ${flag === "unsigned" ? "" : "review"}`} title={t(`bloat.flag.${flag}Hint`)}>
-              {t(`bloat.flag.${flag}`)}
+          {reason && (
+            <span className="tag review" title={t(`bloat.flag.${reason}Hint`)}>
+              {t(`bloat.flag.${reason}`)}
             </span>
-          ))}
+          )}
           {item.running && <span className="tag live">{t("bloat.running")}</span>}
-          {!item.enabled && <span className="tag">{t("bloat.off")}</span>}
         </span>
-        <span className="row-sub">{details}</span>
+        <span className="row-sub" title={item.flags.includes("unsigned") ? t("bloat.flag.unsignedHint") : undefined}>
+          {details}
+        </span>
       </span>
       {item.source && (
         <button type="button" className="icon-btn row-action" title={reveal} onClick={() => void api.reveal(item.source)}>
@@ -147,41 +164,6 @@ function StartupRow({ item, reveal }: { item: StartupItem; reveal: string }) {
           {t("bloat.manage")}
         </button>
       ) : null}
-    </div>
-  );
-}
-
-const STATUS_ICON = { ok: "ok", warn: "alert", info: "info", unknown: "question" } as const;
-
-function SecurityRow({ check, windows }: { check: SecurityCheck; windows: boolean }) {
-  const titleKey = hasText(`sec.${check.id}.title`) ? `sec.${check.id}.title` : `sec.${check.id}.title.${windows ? "win" : "mac"}`;
-  // "Last update installed 12 days ago" when the system told us a number.
-  const withDays = `sec.${check.id}.${check.status}Days`;
-  const plain = `sec.${check.id}.${check.status}`;
-  const text =
-    check.status === "unknown"
-      ? t("sec.unknown")
-      : check.detail && hasText(withDays)
-        ? tx(withDays, { days: check.detail })
-        : hasText(plain)
-          ? tx(plain)
-          : "";
-
-  return (
-    <div className="row tall">
-      <span className={`status ${check.status}`}>
-        <Icon name={STATUS_ICON[check.status]} size={18} />
-      </span>
-      <span className="row-main">
-        <span className="row-title">{tx(titleKey)}</span>
-        <span className="row-sub wrap">{text}</span>
-      </span>
-      <span className={`tag ${check.status === "ok" ? "safe" : check.status === "warn" ? "review" : ""}`}>{t(`bloat.status.${check.status}`)}</span>
-      {check.status !== "ok" && (
-        <button type="button" className="btn small" onClick={() => void api.openSettings(check.id)}>
-          {t("bloat.security.open")}
-        </button>
-      )}
     </div>
   );
 }
@@ -205,8 +187,6 @@ export function BloatView() {
     );
   }
 
-  const flagged = report.startup.filter((i) => i.flags.some((f) => f !== "unsigned")).length;
-  const toCheck = report.security.filter((c) => c.status === "warn").length;
   const startup = showAll ? report.startup : report.startup.slice(0, FIRST);
 
   return (
@@ -219,31 +199,9 @@ export function BloatView() {
       </Header>
 
       <div className="content">
-        <div className="stats">
-          <div className={`stat ${report.unwanted.length ? "warn" : "good"}`}>
-            <span className="card-icon">
-              <Icon name="bloat" size={18} />
-            </span>
-            <span className="card-title">{t("bloat.tile.unwanted")}</span>
-            <span className="stat-value">{report.unwanted.length ? tn("bloat.tile.count", report.unwanted.length) : t("bloat.tile.none")}</span>
-          </div>
-          <div className={`stat ${flagged ? "warn" : "plain"}`}>
-            <span className="card-icon">
-              <Icon name="power" size={18} />
-            </span>
-            <span className="card-title">{t("bloat.tile.startup")}</span>
-            <span className="stat-value">{flagged ? tn("bloat.tile.flagged", flagged) : t("bloat.tile.startupCount", { count: formatCount(report.startup.length) })}</span>
-          </div>
-          <div className={`stat ${toCheck ? "warn" : "good"}`}>
-            <span className="card-icon">
-              <Icon name="shield" size={18} />
-            </span>
-            <span className="card-title">{t("bloat.tile.security")}</span>
-            <span className="stat-value">{toCheck ? tn("bloat.tile.flagged", toCheck) : t("bloat.tile.allGood")}</span>
-          </div>
-        </div>
-
-        <h2 className="section">{t("bloat.unwanted.title")}</h2>
+        <h2 className="section">
+          {t("bloat.unwanted.title")} {report.unwanted.length > 0 && <span>{formatCount(report.unwanted.length)}</span>}
+        </h2>
         {report.unwanted.length === 0 ? (
           <p className="calm">
             <Icon name="ok" size={16} />
@@ -258,7 +216,7 @@ export function BloatView() {
         )}
 
         <h2 className="section">
-          {t("bloat.startup.title")} <span>{t("bloat.startup.hint")}</span>
+          {t("bloat.startup.title")} <span>{report.startup.length > 0 ? formatCount(report.startup.length) : t("bloat.startup.hint")}</span>
         </h2>
         {report.startup.length === 0 ? (
           <p className="calm">
@@ -277,13 +235,6 @@ export function BloatView() {
             )}
           </div>
         )}
-
-        <h2 className="section">{t("bloat.security.title")}</h2>
-        <div className="list flush">
-          {report.security.map((check) => (
-            <SecurityRow key={check.id} check={check} windows={windows} />
-          ))}
-        </div>
 
         <p className="footnote">
           {t("bloat.result", {

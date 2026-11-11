@@ -31,6 +31,42 @@ export function formatBytes(bytes: number): string {
   return `${number} ${units[unit]}`;
 }
 
+/** Memory is counted in powers of 1024 everywhere: a "16 GB" computer has 16 × 1024³ bytes. */
+export function formatMemory(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) {
+    return `${new Intl.NumberFormat(getLocale(), { maximumFractionDigits: gb < 100 && Math.abs(gb - Math.round(gb)) > 0.04 ? 1 : 0 }).format(gb)} GB`;
+  }
+  return `${new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }).format(Math.max(1, bytes / 1024 ** 2))} MB`;
+}
+
+/** 12.4 → "12%" (written the way the language writes it). */
+export function formatPercent(value: number, digits = 0): string {
+  return new Intl.NumberFormat(getLocale(), { style: "percent", maximumFractionDigits: digits }).format(value / 100);
+}
+
+/** How long something has been going on, roughly: "3 days", "5 hours", "12 minutes". */
+export function formatDuration(seconds: number): string {
+  const [value, unit] = seconds >= 2 * 86400 ? [seconds / 86400, "day"] : seconds >= 2 * 3600 ? [seconds / 3600, "hour"] : [Math.max(1, seconds / 60), "minute"];
+  return new Intl.NumberFormat(getLocale(), { style: "unit", unit, unitDisplay: "long", maximumFractionDigits: 0 }).format(Math.floor(value));
+}
+
+/** How long a scan took: "0.9 sec", "14 sec", "2 min 5 sec". */
+export function formatSeconds(ms: number): string {
+  const seconds = ms / 1000;
+  const unit = (value: number, name: string, digits = 0) =>
+    new Intl.NumberFormat(getLocale(), { style: "unit", unit: name, unitDisplay: "short", maximumFractionDigits: digits }).format(value);
+  if (seconds < 10) return unit(seconds, "second", 1);
+  const whole = Math.round(seconds);
+  if (whole < 60) return unit(whole, "second");
+  return `${unit(Math.floor(whole / 60), "minute")} ${unit(whole % 60, "second")}`;
+}
+
+/** The time of day of a moment (milliseconds since 1970): "14:02", "2:02 PM". */
+export function formatClock(ms: number): string {
+  return new Intl.DateTimeFormat(getLocale(), { hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+}
+
 /** "3 months ago", "yesterday", … from a unix timestamp in seconds. */
 export function formatAgo(unixSeconds: number | null): string {
   if (!unixSeconds) return t("time.never");

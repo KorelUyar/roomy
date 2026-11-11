@@ -3,7 +3,7 @@
 //
 //   node scripts/shots.mjs --out docs/screenshots                 sample data
 //   node scripts/shots.mjs --out shots/real --real                this computer (needs the bridge)
-//   options: --lang de   --platform windows   --dark   --only overview,apps
+//   options: --lang de   --platform windows   --dark   --only health,storage,apps
 //
 // Needs `npm run build && npx vite preview --port 4173` and, for real icons
 // or real data, the backend bridge:
@@ -52,20 +52,40 @@ const snap = async (name) => {
   await page.screenshot({ path: `${out}/${name}.png`, omitBackground: true });
   console.log(`  ${out}/${name}.png`);
 };
-const nav = (n) => page.locator(".nav-item").nth(n).click();
+const nav = (view) => page.locator(`.nav-item[data-view="${view}"]`).click();
+const content = page.locator(".content");
 
 await page.goto(`${base}/?${query}`);
+await page.waitForSelector(".vital");
 if (want("scanning")) {
+  await nav("overview");
   await page.waitForSelector(".scan");
   await page.waitForTimeout(real ? 1200 : 900);
   await snap("scanning");
 }
-await page.waitForSelector(".hero", { timeout: 180_000 });
-await page.waitForFunction(() => document.querySelectorAll(".nav-item em").length >= 2, null, { timeout: 60_000 }).catch(() => {});
-if (want("overview")) await snap("overview");
+if (want("storage")) {
+  await nav("overview");
+  await page.waitForSelector(".hero", { timeout: 180_000 });
+  await snap("storage");
+}
+
+// Health: first as it opens, then with the check-up done.
+if (want("health")) {
+  await nav("health");
+  await page.waitForFunction(() => document.querySelectorAll(".row.tall").length >= 6, null, { timeout: 60_000 }).catch(() => {});
+  await snap("health-start");
+  await page.locator(".band .btn.primary").click();
+  await page.waitForTimeout(1100);
+  await snap("health-checking");
+  await page.waitForSelector(".band.ok, .band.warn, .band.bad", { timeout: 240_000 });
+  await page.waitForTimeout(700); // the sign has been drawn
+  await snap("health");
+  await content.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await snap("health-memory");
+}
 
 if (want("apps") || want("delete")) {
-  await nav(1);
+  await nav("apps");
   await page.waitForSelector(".row");
   if (want("apps")) await snap("apps");
   if (platform === "macos") {
@@ -85,19 +105,19 @@ if (want("apps") || want("delete")) {
 }
 
 if (want("files")) {
-  await nav(2);
-  await page.waitForSelector(".row.tall");
+  await nav("files");
+  await page.waitForSelector(".row.tall", { timeout: 180_000 });
   await snap("files");
 }
 
 if (want("folders")) {
-  await nav(3);
-  await page.waitForSelector(".row .bar");
+  await nav("folders");
+  await page.waitForSelector(".row .bar", { timeout: 180_000 });
   await snap("folders");
 }
 
 if (want("cleanup")) {
-  await nav(4);
+  await nav("cleanup");
   await page.waitForSelector(".group");
   await page.locator(".group-head").nth(1).click();
   await page.locator(".group-head .check").nth(1).click();
@@ -105,16 +125,41 @@ if (want("cleanup")) {
   await page.locator(".selbar-clear").click();
 }
 
+// Protection: the scan before, during and after, then what a full scan of the sample computer finds.
+if (want("protection")) {
+  // A fresh start, so the tab is seen as it is before anything was scanned.
+  await page.evaluate(() => localStorage.removeItem("roomy.lastScan"));
+  await page.reload();
+  await page.waitForSelector(".vital");
+  await nav("protection");
+  await page.waitForSelector(".band-actions .btn.primary", { timeout: 60_000 });
+  await page.waitForFunction(() => document.querySelectorAll(".status").length >= 5, null, { timeout: 120_000 });
+  await snap("protection-start");
+  await page.locator('.band [data-scope="quick"]').click();
+  await page.waitForTimeout(real ? 300 : 1000);
+  if ((await page.locator(".band .spinner").count()) > 0) await snap("protection-scanning");
+  await page.waitForSelector(".band.ok, .band.warn, .band.bad", { timeout: 600_000 });
+  await page.waitForTimeout(700);
+  await snap("protection");
+  if (!real && platform === "macos") {
+    await page.locator('.band [data-scope="full"]').click();
+    await page.waitForSelector(".band.bad", { timeout: 120_000 });
+    await page.waitForTimeout(700);
+    await snap("protection-threats");
+  }
+}
+
 if (want("bloat")) {
-  await nav(5);
-  await page.waitForSelector(".bloat-intro");
-  await snap("bloat-start");
-  await page.locator(".bloat-intro .btn.primary").click();
-  await page.waitForSelector(".stats", { timeout: 120_000 });
+  await nav("bloat");
+  // Scanned already when the Health check or the Protection tab ran before.
+  const start = page.locator(".bloat-intro .btn.primary");
+  await page.waitForSelector(".bloat-intro, .section");
+  if ((await start.count()) > 0) {
+    await snap("bloat-start");
+    await start.click();
+  }
+  await page.waitForSelector(".section", { timeout: 120_000 });
   await snap("bloat");
-  // The protections are at the end of the list.
-  await page.locator(".content").evaluate((el) => el.scrollTo(0, el.scrollHeight));
-  await snap("bloat-security");
 }
 
 // A second disk: pick it in the sidebar, wait for its scan.
@@ -122,7 +167,7 @@ if (want("disk2")) {
   const disks = page.locator(".disk.pick");
   if ((await disks.count()) > 1) {
     await disks.nth(1).click();
-    await nav(0);
+    await nav("overview");
     await page.waitForSelector(".hero", { timeout: 180_000 });
     await snap("disk2");
   }

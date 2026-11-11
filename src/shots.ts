@@ -3,7 +3,7 @@
 // app is checked on machines without a person in front of the screen.
 
 import { debugInvoke } from "./api";
-import { getState, navigate, scanBloat, setState } from "./store";
+import { checkAll, getState, navigate, refreshHealth, scanBloat, setState } from "./store";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -29,21 +29,33 @@ export async function runShots() {
   window.addEventListener("unhandledrejection", (e) => report(String(e.reason?.stack ?? e.reason)));
   try {
     await sleep(300);
+    navigate("overview");
     await shot("0-scanning");
     await until(() => getState().overview !== null);
     await until(() => getState().apps !== null && getState().cleanup !== null);
-    await shot("1-overview");
+    await shot("1-storage");
+    navigate("health");
+    // Twice: the processor's load is the difference between two looks.
+    await refreshHealth();
+    await sleep(1200);
+    await refreshHealth();
+    await shot("2-health-before");
+    await checkAll();
+    await refreshHealth();
+    await shot("3-health");
     navigate("apps");
-    await shot("2-apps");
+    await shot("4-apps");
     navigate("files");
-    await shot("3-files");
+    await shot("5-files");
     navigate("folders");
-    await shot("4-folders");
+    await shot("6-folders");
     navigate("cleanup");
-    await shot("5-cleanup");
+    await shot("7-cleanup");
+    navigate("protection");
+    await shot("8-protection");
     navigate("bloat");
-    await scanBloat();
-    await shot("6-bloat");
+    if (!getState().bloat) await scanBloat();
+    await shot("9-bloat");
     const s = getState();
     await debugInvoke("debug_write", {
       name: "state.json",
@@ -54,6 +66,9 @@ export async function runShots() {
           scan: s.scan,
           disks: s.disks,
           bloat: s.bloat && { unwanted: s.bloat.unwanted.length, startup: s.bloat.startup.length, security: s.bloat.security },
+          health: s.health,
+          malware: s.malware && { ...s.malware, current: "" },
+          check: s.check,
           apps: s.apps?.length,
           cleanup: s.cleanup?.map((g) => [g.id, g.size, g.items.length]),
           categories: s.overview?.categories,
@@ -62,7 +77,7 @@ export async function runShots() {
         2,
       ),
     });
-    setState({ view: "overview" });
+    setState({ view: "health" });
   } finally {
     await debugInvoke("debug_exit");
   }

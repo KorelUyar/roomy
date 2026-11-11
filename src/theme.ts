@@ -15,7 +15,7 @@ export const CATEGORY_COLOR: Record<CategoryId, string> = {
 };
 
 /** Top-level folders of a disk that is not the system disk take these in turn. */
-export const FOLDER_COLORS = ["var(--c-apps)", "var(--c-media)", "var(--c-downloads)", "var(--c-documents)", "var(--c-appdata)", "var(--c-developer)"];
+export const FOLDER_COLORS = ["var(--c-apps)", "var(--c-documents)", "var(--c-downloads)", "var(--c-media)", "var(--c-developer)", "var(--c-appdata)", "var(--c-other)", "var(--c-users)"];
 
 export const CLEAN_ICON: Record<CleanGroupId, string> = {
   trash: "trash",

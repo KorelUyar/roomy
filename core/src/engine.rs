@@ -6,7 +6,7 @@
 
 use crate::delete::DeleteRequest;
 use crate::scan::{Progress, ScanData};
-use crate::{apps, bloat, browse, cleanup, delete, platform, safety, scan};
+use crate::{apps, bloat, browse, cleanup, delete, health, malware, platform, safety, scan};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -67,6 +67,14 @@ struct DeleteArg {
 #[serde(rename_all = "camelCase")]
 struct PidsArg {
     pids: Vec<u32>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ScopeArg {
+    /// "quick" (the default) or "full".
+    #[serde(default)]
+    scope: Option<String>,
 }
 
 fn arg<T: for<'de> Deserialize<'de>>(args: Value) -> Result<T, String> {
@@ -265,6 +273,24 @@ impl Engine {
             "open_settings" => {
                 let a: IdArg = arg(args)?;
                 bloat::open_settings(&a.id)?;
+                Ok(Value::Null)
+            }
+            // --- Health ----------------------------------------------------
+            "health" => ok(health::snapshot()),
+            "health_quit" => {
+                let a: PidsArg = arg(args)?;
+                ok(health::quit_apps(&a.pids))
+            }
+            // --- Malware scan ----------------------------------------------
+            "malware_info" => ok(malware::info()),
+            "malware_start" => {
+                let a: ScopeArg = arg_or_default(args)?;
+                malware::start(a.scope.as_deref().unwrap_or("quick"))?;
+                Ok(Value::Null)
+            }
+            "malware_status" => ok(malware::status()),
+            "malware_cancel" => {
+                malware::cancel();
                 Ok(Value::Null)
             }
             other => Err(format!("unknown command: {other}")),

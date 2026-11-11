@@ -11,11 +11,16 @@ import type {
   DeleteOutcome,
   DeleteRequest,
   Entry,
+  Health,
   Kind,
+  MalwareEngine,
+  MalwareStatus,
   Overview,
   Platform,
   RelatedItem,
+  ScanScope,
   ScanStatus,
+  Threat,
   Transport,
 } from "./api";
 
@@ -27,6 +32,9 @@ export interface MockOptions {
   iconUrl?: (path: string, size: number) => string | null;
   shotsDir?: string | null;
 }
+
+/** Processor load of the last minutes on the sample computer, oldest first. */
+export const SAMPLE_CPU = [9, 11, 10, 14, 22, 31, 27, 18, 13, 12, 15, 13, 11, 12, 19, 24, 21, 16, 12, 10, 11, 13, 17, 15, 12, 11, 14, 26, 35, 29, 20, 15, 13, 12, 11, 13, 16, 14, 12, 13];
 
 const GB = 1000 ** 3;
 const MB = 1000 ** 2;
@@ -524,6 +532,11 @@ export function createMock(opts: MockOptions): Transport {
       freed = freed || unwanted.size;
       bloat = { ...bloat, unwanted: bloat.unwanted.filter((u) => u !== unwanted) };
     }
+    const threat = threats.find((x) => (x.container ?? x.path) === req.path);
+    if (threat) {
+      freed = freed || threat.size;
+      threats = threats.filter((x) => x !== threat);
+    }
     for (const g of cleanup) {
       const it = g.items.find((i) => i.path === req.path);
       if (it) {
@@ -602,10 +615,10 @@ export function createMock(opts: MockOptions): Transport {
         ],
         security: [
           { id: "diskEncryption", status: "ok", detail: null },
-          { id: "firewall", status: "warn", detail: null },
+          { id: "firewall", status: "info", detail: null },
           { id: "gatekeeper", status: "ok", detail: null },
           { id: "sip", status: "ok", detail: null },
-          { id: "updates", status: "ok", detail: null },
+          { id: "updates", status: "warn", detail: "63" },
           { id: "autoLogin", status: "ok", detail: null },
           { id: "remoteLogin", status: "info", detail: null },
         ],
@@ -613,9 +626,112 @@ export function createMock(opts: MockOptions): Transport {
         durationMs: 1600,
       };
 
+  // The sample computer itself: a laptop that is doing a little something.
+  const GIB = 1024 ** 3;
+  const booted = Date.now();
+  const still = !!opts.shotsDir || new URLSearchParams(location.search).has("still");
+  let consumers: Health["top"] = (
+    win
+      ? ([
+          ["Google Chrome", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", 3.1, 7.4],
+          ["Vmmem", "", 2.4, 3.1],
+          ["Discord", "C:\\Users\\alex\\AppData\\Local\\Discord\\Discord.exe", 0.92, 1.2],
+          ["Steam", "C:\\Program Files (x86)\\Steam\\steam.exe", 0.61, 0.6],
+          ["Spotify", "C:\\Users\\alex\\AppData\\Roaming\\Spotify\\Spotify.exe", 0.48, 0.9],
+          ["explorer", "C:\\Windows\\explorer.exe", 0.31, 0.4],
+        ] as const)
+      : ([
+          ["Safari", "/Applications/Safari.app", 2.9, 6.4],
+          ["Xcode", "/Applications/Xcode.app", 2.4, 11.8],
+          ["Claude", "/Applications/Claude.app", 1.3, 2.1],
+          ["OrbStack", "/Applications/OrbStack.app", 1.1, 3.4],
+          ["Obsidian", "/Applications/Obsidian.app", 0.64, 0.3],
+          ["WindowServer", "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer", 0.51, 4.2],
+          ["node", "/opt/homebrew/bin/node", 0.42, 1.4],
+          ["mds_stores", "/System/Library/Frameworks/CoreServices.framework/Frameworks/Metadata.framework/Support/mds_stores", 0.21, 0.2],
+        ] as const)
+  ).map(([name, path, gb, cpu], i) => ({
+    name,
+    path,
+    memory: Math.round(gb * GIB),
+    cpu,
+    pids: [900 + i],
+    canQuit: !win && path.startsWith("/Applications"),
+    app: win ? !!path && !path.startsWith("C:\\Windows") : path.endsWith(".app"),
+  }));
+
+  const startedWith = consumers.length;
+
+  function health(): Health {
+    const s = still ? 0 : (Date.now() - booted) / 1000;
+    const wobble = Math.sin(s * 0.9) * 5 + Math.sin(s * 2.7 + 1) * 3 + Math.sin(s * 0.23 + 2) * 4;
+    const total = (win ? 16 : 18) * GIB;
+    const used = Math.round((win ? 10.9 : 11.6) * GIB + Math.sin(s * 0.4) * 0.15 * GIB - (startedWith - consumers.length) * 0.9 * GIB);
+    return {
+      os: win ? "Windows 11 (26100)" : "macOS 15.4",
+      host: win ? "ALEX-LAPTOP" : "Alex's MacBook Pro",
+      cpuBrand: win ? "AMD Ryzen 7 7840U" : "Apple M3 Pro",
+      cores: win ? 16 : 12,
+      cpu: Math.max(2, Math.min(97, SAMPLE_CPU[SAMPLE_CPU.length - 1] + wobble)),
+      memoryTotal: total,
+      memoryUsed: used,
+      memoryAvailable: total - used,
+      swapUsed: 0,
+      pressure: "normal",
+      uptime: 3 * DAY + 5 * 3600 + Math.round(s),
+      battery: win
+        ? { percent: 64, charging: true, plugged: true, cycles: null, maxCapacity: 88, condition: "good" }
+        : { percent: 82, charging: false, plugged: false, cycles: 214, maxCapacity: 91, condition: "good" },
+      diskHealth: "ok",
+      top: consumers.map((c) => ({ ...c, cpu: Math.max(0.1, c.cpu + (still ? 0 : Math.sin(s * 1.3 + c.pids[0]) * c.cpu * 0.3)) })),
+    };
+  }
+
+  // The malware scan of the sample computer: the quick one finds nothing, the
+  // full one finds the scanner's test file and the adware the Bloat Scanner knows.
+  const engine: MalwareEngine = win
+    ? { engine: "defender", available: true, version: "1.421.118.0", rules: 0, updated: now - DAY }
+    : { engine: "xprotect", available: true, version: "5372", rules: 586, updated: now - 9 * DAY };
+  let threats: Threat[] = win
+    ? [{ path: `${dl}\\free-video-converter-setup.exe`, name: "free-video-converter-setup.exe", signature: "PUA:Win32/InstallCore", size: 0, modified: 0, container: null, handled: true, test: false }]
+    : [
+        { path: `${homePath}/Library/Application Support/SearchMine/SearchMine.app/Contents/MacOS/SearchMine`, name: "SearchMine", signature: "MACOS.ADLOAD", size: Math.round(3.1 * MB), modified: now - 41 * DAY, container: `${homePath}/Library/Application Support/SearchMine/SearchMine.app`, handled: false, test: false },
+        { path: `${dl}/eicar.com`, name: "eicar.com", signature: "EICAR test file", size: 68, modified: now - 2 * DAY, container: null, handled: false, test: true },
+      ];
+  let malware: { started: number; scope: ScanScope; stopped: number | null } | null = null;
+  const fast = !!opts.shotsDir || new URLSearchParams(location.search).has("fast");
+  function malwareStatus(): MalwareStatus {
+    if (!malware) return { state: "idle", scope: "quick", files: 0, bytes: 0, current: "", skipped: 0, threats: [], started: 0, durationMs: 0, cancelled: false, error: null, engine };
+    const full = malware.scope === "full";
+    const length = fast ? 500 : full ? 9000 : 2400;
+    const elapsed = (malware.stopped ?? Date.now()) - malware.started;
+    const t = Math.min(1, elapsed / length);
+    const done = t >= 1 || malware.stopped !== null;
+    const stops = full
+      ? ["Library/Application Support", "Movies", "Pictures", "Documents/Projects", "Developer/webshop/node_modules", "Downloads"]
+      : ["Applications/Xcode.app/Contents/MacOS", "Applications/Safari.app/Contents/MacOS", "Library/LaunchAgents", "Downloads", "Desktop"];
+    const where = stops[Math.min(stops.length - 1, Math.floor(t * stops.length))];
+    return {
+      state: done ? "done" : "scanning",
+      scope: malware.scope,
+      // Microsoft Defender does not say how far it is.
+      files: win ? 0 : Math.round((full ? 412_806 : 5_214) * t),
+      bytes: win ? 0 : Math.round((full ? 61.3 * GB : 742 * MB) * t),
+      current: win || done ? "" : where.startsWith("Applications") ? `/${where}` : `${homePath}/${where}`,
+      skipped: full && done && !win ? 14 : 0,
+      threats: done && malware.stopped === null && full ? threats : [],
+      started: Math.floor(malware.started / 1000),
+      // Microsoft Defender takes minutes where Roomy's own scan takes seconds.
+      durationMs: win ? 84_000 : fast ? (full ? 71_400 : 1_900) : Math.round(elapsed * (full ? 8 : 0.8)),
+      cancelled: malware.stopped !== null,
+      error: null,
+      engine,
+    };
+  }
+
   const meta: AppMeta = {
     platform: opts.platform,
-    version: "0.2.0",
+    version: "0.3.0",
     home: homePath,
     root,
     locale: opts.locale,
@@ -661,6 +777,22 @@ export function createMock(opts: MockOptions): Transport {
       return null;
     },
     open_settings: () => null,
+    health: () => health(),
+    health_quit: (a) => {
+      const pids = a.pids as number[];
+      const before = consumers.length;
+      consumers = consumers.filter((c) => !(c.canQuit && c.pids.some((p) => pids.includes(p))));
+      return before - consumers.length;
+    },
+    malware_start: (a) => {
+      if (!malware || malwareStatus().state !== "scanning") malware = { started: Date.now(), scope: a.scope === "full" ? "full" : "quick", stopped: null };
+      return null;
+    },
+    malware_status: () => malwareStatus(),
+    malware_cancel: () => {
+      if (malware && malwareStatus().state === "scanning") malware.stopped = Date.now();
+      return null;
+    },
     list_apps: () => [...apps].sort((a, b) => b.size - a.size),
     app_related: (a) => (win ? [] : related(a.path)),
     uninstall_app: (a) => {

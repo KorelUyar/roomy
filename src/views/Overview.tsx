@@ -129,7 +129,6 @@ export function OverviewView() {
   return (
     <>
       <Header title={t("nav.overview")}>
-        {meta.demo && <span className="pill">{t("overview.demo")}</span>}
         <button type="button" className="btn" onClick={() => void rescan()} disabled={scanning}>
           <Icon name="refresh" size={14} className={scanning ? "spin" : ""} />
           {scanning ? t("scan.scanning") : t("disk.rescan")}
@@ -192,6 +191,12 @@ export function OverviewView() {
                 </button>
               );
             })}
+            {/* The rest of the bar: what is still free closes the list. */}
+            <button type="button" className="legend-item" disabled>
+              <i className="free" />
+              <span>{t("cat.free")}</span>
+              <b>{formatBytes(disk.free)}</b>
+            </button>
           </div>
         </section>
 
@@ -199,13 +204,13 @@ export function OverviewView() {
         <div className={`cards${cards.length < 4 ? " few" : ""}`}>
           {cards.map((card) => (
             <button key={card.key} type="button" className="card" onClick={card.go}>
-              <span className={`card-icon card-${card.key}`}>
-                <Icon name={card.icon} size={18} />
+              <span className="card-title">
+                <Icon name={card.icon} size={14} />
+                {card.title}
+                <Icon name="chevronRight" size={14} className="card-arrow" />
               </span>
-              <span className="card-title">{card.title}</span>
               <span className="card-size">{formatBytes(card.size)}</span>
               <span className="card-hint">{card.hint}</span>
-              <Icon name="chevronRight" size={16} className="card-arrow" />
             </button>
           ))}
         </div>

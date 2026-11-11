@@ -71,11 +71,8 @@ export function FileIcon({ path, kind, size = 32, name }: { path: string | null;
   }
   const style = { width: size, height: size, borderRadius: Math.round(size * 0.28) };
   if (kind === "app" && name) {
-    // A calm, stable colour per app name.
-    let hash = 0;
-    for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
     return (
-      <span className="tile tile-letter" style={{ ...style, fontSize: size * 0.44, ["--hue" as string]: hash }}>
+      <span className="tile tile-letter" style={{ ...style, fontSize: size * 0.44 }}>
         {name.trim().charAt(0).toUpperCase()}
       </span>
     );
@@ -146,5 +143,115 @@ export function Skeleton({ rows = 8 }: { rows?: number }) {
         </div>
       ))}
     </div>
+  );
+}
+
+export type Tone = "ok" | "warn" | "bad" | "info" | "unknown";
+
+export const TONE_ICON: Record<Tone, string> = { ok: "check", warn: "bang", bad: "bang", info: "info", unknown: "minus" };
+
+/**
+ * One line of a report: a state, what it is about and what was found. The
+ * sign never stands alone; the words next to it say the same.
+ */
+export function StatusRow({
+  tone,
+  icon,
+  title,
+  text,
+  line,
+  onClick,
+  children,
+}: {
+  tone: Tone;
+  /** Another sign than the one the state has by default. */
+  icon?: string;
+  title: ReactNode;
+  text?: ReactNode;
+  /** Title and text next to each other on one line. */
+  line?: boolean;
+  onClick?: () => void;
+  children?: ReactNode;
+}) {
+  const body = (
+    <>
+      <span className={`status ${icon ? "" : tone}`}>
+        <Icon name={icon ?? TONE_ICON[tone]} size={icon ? 17 : 15} stroke={icon ? 1.8 : 2.6} />
+      </span>
+      <span className="row-main">
+        <span className="row-title">{title}</span>
+        {text && <span className={`row-sub${line ? "" : " wrap"}`}>{text}</span>}
+      </span>
+      {children}
+      {onClick && <Icon name="chevronRight" size={15} className="row-arrow" />}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className={`row clickable ${line ? "line" : "tall"}`} data-tone={tone} onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className={`row ${line ? "line" : "tall"}`} data-tone={tone}>
+      {body}
+    </div>
+  );
+}
+
+export type BandTone = "idle" | "ok" | "warn" | "bad" | "unknown";
+
+/**
+ * What a tab leads with: a sign, a sentence and what to do about it.
+ * A result (good, look at this, wrong) draws its own sign; `icon` is for
+ * the states before there is one.
+ */
+export function Band({
+  tone,
+  icon,
+  busy,
+  title,
+  children,
+  actions,
+  list,
+  foot,
+}: {
+  tone: BandTone;
+  icon: string;
+  busy?: boolean;
+  title: ReactNode;
+  children?: ReactNode;
+  actions?: ReactNode;
+  /** What the sentence counts, as rows right under it. */
+  list?: ReactNode;
+  foot?: ReactNode;
+}) {
+  const result = tone === "ok" || tone === "warn" || tone === "bad";
+  return (
+    <section className={`band ${busy ? "idle" : tone}`}>
+      <span className="band-mark" key={busy ? "busy" : tone}>
+        {busy ? (
+          <span className="spinner" />
+        ) : result ? (
+          <svg className="drawn" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {tone === "ok" ? (
+              <path pathLength={1} d="M19.5 6.5 9.5 17l-5-5" />
+            ) : (
+              <>
+                <path pathLength={1} d="M12 5.5v8" />
+                <path pathLength={1} d="M12 18h.01" />
+              </>
+            )}
+          </svg>
+        ) : (
+          <Icon name={icon} size={24} stroke={1.8} />
+        )}
+      </span>
+      <div className="band-text">
+        <h2 className="band-title">{title}</h2>
+        {children}
+      </div>
+      {actions && <div className="band-actions">{actions}</div>}
+      {list && <div className="band-list">{list}</div>}
+      {foot && <div className="band-foot">{foot}</div>}
+    </section>
   );
 }
