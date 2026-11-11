@@ -75,6 +75,9 @@ struct ScopeArg {
     /// "quick" (the default) or "full".
     #[serde(default)]
     scope: Option<String>,
+    /// Files an earlier run found and that were not removed: looked at again.
+    #[serde(default)]
+    recheck: Vec<String>,
 }
 
 fn arg<T: for<'de> Deserialize<'de>>(args: Value) -> Result<T, String> {
@@ -285,13 +288,21 @@ impl Engine {
             "malware_info" => ok(malware::info()),
             "malware_start" => {
                 let a: ScopeArg = arg_or_default(args)?;
-                malware::start(a.scope.as_deref().unwrap_or("quick"))?;
+                malware::start(a.scope.as_deref().unwrap_or("quick"), &a.recheck)?;
                 Ok(Value::Null)
             }
             "malware_status" => ok(malware::status()),
             "malware_cancel" => {
                 malware::cancel();
                 Ok(Value::Null)
+            }
+            "malware_quit" => {
+                let a: PidsArg = arg(args)?;
+                ok(malware::quit(&a.pids))
+            }
+            "malware_clean" => {
+                malware::clean()?;
+                ok(malware::status())
             }
             other => Err(format!("unknown command: {other}")),
         }

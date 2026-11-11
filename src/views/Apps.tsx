@@ -3,7 +3,7 @@ import { api, type AppInfo } from "../api";
 import { formatAgo, formatBytes } from "../format";
 import { formatCount, t } from "../i18n";
 import { Icon } from "../icons";
-import { refreshLists, setState, toast, toggleSelect, useStore, type SelItem } from "../store";
+import { refreshLists, setState, tickRow, toast, useStore, type SelItem } from "../store";
 import { Checkbox, Empty, FileIcon, Header, Segmented, SizeBar, Skeleton } from "../ui";
 
 function selItem(app: AppInfo): SelItem {
@@ -23,18 +23,22 @@ export function AppsView() {
   const apps = useStore((s) => s.apps);
   const sort = useStore((s) => s.appsSort);
   const selection = useStore((s) => s.selection);
+  const pending = useStore((s) => s.pending);
   const [query, setQuery] = useState("");
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = (apps ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || (a.publisher ?? "").toLowerCase().includes(q));
+    // What is on its way out is gone from the list at once.
+    const list = (apps ?? []).filter((a) => !pending.has(a.path) && (!q || a.name.toLowerCase().includes(q) || (a.publisher ?? "").toLowerCase().includes(q)));
     const byName = (a: AppInfo, b: AppInfo) => a.name.localeCompare(b.name);
     if (sort === "name") list.sort(byName);
     // Longest unused first; apps that were never opened lead the list.
     else if (sort === "used") list.sort((a, b) => (a.lastUsed ?? a.installed ?? 0) - (b.lastUsed ?? b.installed ?? 0) || b.size - a.size);
     else list.sort((a, b) => b.size - a.size || byName(a, b));
     return list;
-  }, [apps, query, sort]);
+  }, [apps, query, sort, pending]);
+  // The rows that can be ticked, in the order they are shown (for ticking a stretch with Shift).
+  const tickable = useMemo(() => shown.filter((a) => a.removal === "trash" && !a.running).map(selItem), [shown]);
 
   // Windows does not record when a program was last started.
   const hasUsage = (apps ?? []).some((a) => a.removal === "trash");
@@ -80,14 +84,15 @@ export function AppsView() {
             {shown.map((app) => {
               const selected = selection.has(app.path);
               const selectable = app.removal === "trash" && !app.running;
+              const index = tickable.findIndex((x) => x.path === app.path);
               return (
                 <div
                   key={app.id}
                   className={`row tall${selected ? " selected" : ""}${selectable ? " clickable" : ""}`}
-                  onClick={() => selectable && toggleSelect(selItem(app))}
+                  onClick={(e) => selectable && tickRow("apps", tickable, index, e.shiftKey)}
                 >
                   {app.removal === "trash" && (
-                    <Checkbox checked={selected} locked={app.running} title={app.running ? t("apps.runningHint") : undefined} onChange={() => toggleSelect(selItem(app))} />
+                    <Checkbox checked={selected} locked={app.running} title={app.running ? t("apps.runningHint") : undefined} onChange={(shift) => tickRow("apps", tickable, index, shift)} />
                   )}
                   <FileIcon path={app.icon || null} kind="app" size={36} name={app.name} />
                   <span className="row-main">

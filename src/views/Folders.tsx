@@ -3,7 +3,7 @@ import { api, type Entry } from "../api";
 import { crumbs, formatBytes, parentPath } from "../format";
 import { formatCount, t } from "../i18n";
 import { Icon } from "../icons";
-import { openFolder, toggleSelect, useStore } from "../store";
+import { openFolder, tickRow, useStore } from "../store";
 import { Checkbox, Empty, FileIcon, Header, Skeleton, SizeBar } from "../ui";
 import { entryToSel } from "./Files";
 
@@ -18,6 +18,7 @@ export function FoldersView() {
   const diskRoot = useStore((s) => s.diskRoot);
   const onSystemDisk = useStore((s) => s.disk?.system ?? true);
   const selection = useStore((s) => s.selection);
+  const pending = useStore((s) => s.pending);
   const [data, setData] = useState<{ path: string; entries: Entry[] } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -37,7 +38,8 @@ export function FoldersView() {
 
   // While another folder loads, do not show the old rows under the new path.
   const stale = !data || data.path !== path;
-  const entries = stale ? null : data.entries;
+  // What is on its way out is gone from the list at once.
+  const entries = stale ? null : data.entries.filter((e) => !pending.has(e.path));
 
   const trail = crumbs(path, diskRoot);
   const up = parentPath(path, diskRoot);
@@ -45,6 +47,8 @@ export function FoldersView() {
   const max = entries?.[0]?.size ?? 0;
   const shown = showAll ? (entries ?? []) : (entries ?? []).slice(0, PAGE);
   const reveal = t(meta.platform === "windows" ? "action.reveal.win" : "action.reveal.mac");
+  // The rows that can be ticked, in the order they are shown (for ticking a stretch with Shift).
+  const tickable = shown.filter((e) => !e.protected).map(entryToSel);
 
   return (
     <>
@@ -90,10 +94,11 @@ export function FoldersView() {
             {shown.map((e) => {
               const selected = selection.has(e.path);
               const browsable = e.isDir && !e.package && !e.denied;
-              const activate = () => (browsable ? openFolder(e.path) : !e.protected && toggleSelect(entryToSel(e)));
+              const index = tickable.findIndex((x) => x.path === e.path);
+              const activate = (shift: boolean) => (browsable ? openFolder(e.path) : !e.protected && tickRow("folders", tickable, index, shift));
               return (
-                <div key={e.path} className={`row clickable${selected ? " selected" : ""}`} onClick={activate}>
-                  <Checkbox checked={selected} locked={e.protected} title={e.protected ? t("folders.protected") : undefined} onChange={() => toggleSelect(entryToSel(e))} />
+                <div key={e.path} className={`row clickable${selected ? " selected" : ""}`} onClick={(ev) => activate(ev.shiftKey)}>
+                  <Checkbox checked={selected} locked={e.protected} title={e.protected ? t("folders.protected") : undefined} onChange={(shift) => tickRow("folders", tickable, index, shift)} />
                   <FileIcon path={e.path} kind={e.kind} size={28} />
                   <span className="row-main">
                     <span className="row-title">{e.name}</span>

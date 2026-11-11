@@ -56,7 +56,7 @@ const nav = (view) => page.locator(`.nav-item[data-view="${view}"]`).click();
 const content = page.locator(".content");
 
 await page.goto(`${base}/?${query}`);
-await page.waitForSelector(".vital");
+await page.waitForSelector(".condition");
 if (want("scanning")) {
   await nav("overview");
   await page.waitForSelector(".scan");
@@ -69,19 +69,17 @@ if (want("storage")) {
   await snap("storage");
 }
 
-// Health: first as it opens, then with the check-up done.
+// Health: the check-up runs by itself at the start.
+const checked = () => page.waitForSelector(".condition:not(.checking) [data-check]:not([disabled])", { timeout: 240_000 });
 if (want("health")) {
   await nav("health");
-  await page.waitForFunction(() => document.querySelectorAll(".row.tall").length >= 6, null, { timeout: 60_000 }).catch(() => {});
-  await snap("health-start");
-  await page.locator(".band .btn.primary").click();
-  await page.waitForTimeout(1100);
-  await snap("health-checking");
-  await page.waitForSelector(".band.ok, .band.warn, .band.bad", { timeout: 240_000 });
-  await page.waitForTimeout(700); // the sign has been drawn
+  await checked();
+  await page.waitForFunction(() => document.querySelectorAll(".row.line").length >= 3, null, { timeout: 60_000 }).catch(() => {});
+  await page.waitForTimeout(700); // the ring has filled
   await snap("health");
   await content.evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await snap("health-memory");
+  await content.evaluate((el) => el.scrollTo(0, 0));
 }
 
 if (want("apps") || want("delete")) {
@@ -125,30 +123,7 @@ if (want("cleanup")) {
   await page.locator(".selbar-clear").click();
 }
 
-// Protection: the scan before, during and after, then what a full scan of the sample computer finds.
-if (want("protection")) {
-  // A fresh start, so the tab is seen as it is before anything was scanned.
-  await page.evaluate(() => localStorage.removeItem("roomy.lastScan"));
-  await page.reload();
-  await page.waitForSelector(".vital");
-  await nav("protection");
-  await page.waitForSelector(".band-actions .btn.primary", { timeout: 60_000 });
-  await page.waitForFunction(() => document.querySelectorAll(".status").length >= 5, null, { timeout: 120_000 });
-  await snap("protection-start");
-  await page.locator('.band [data-scope="quick"]').click();
-  await page.waitForTimeout(real ? 300 : 1000);
-  if ((await page.locator(".band .spinner").count()) > 0) await snap("protection-scanning");
-  await page.waitForSelector(".band.ok, .band.warn, .band.bad", { timeout: 600_000 });
-  await page.waitForTimeout(700);
-  await snap("protection");
-  if (!real && platform === "macos") {
-    await page.locator('.band [data-scope="full"]').click();
-    await page.waitForSelector(".band.bad", { timeout: 120_000 });
-    await page.waitForTimeout(700);
-    await snap("protection-threats");
-  }
-}
-
+// Before anything is fixed: the full lists.
 if (want("bloat")) {
   await nav("bloat");
   // Scanned already when the Health check or the Protection tab ran before.
@@ -160,6 +135,56 @@ if (want("bloat")) {
   }
   await page.waitForSelector(".section", { timeout: 120_000 });
   await snap("bloat");
+}
+
+// Protection: the report of the check-up, a deep scan, and everything fixed with one button.
+if (want("protection")) {
+  await nav("protection");
+  await page.waitForSelector('.band [data-scan="quick"]', { timeout: 240_000 });
+  await page.waitForFunction(() => document.querySelectorAll(".row .status").length >= 4, null, { timeout: 120_000 });
+  await page.waitForTimeout(600);
+  await snap("protection");
+  if (!real) {
+    await page.locator('.band [data-scan="full"]').click();
+    await page.waitForSelector(".band .spinner");
+    await page.waitForTimeout(1400);
+    await snap("protection-scanning");
+    await page.waitForSelector('.band [data-scan="quick"]', { timeout: 600_000 });
+    await page.waitForTimeout(700);
+    await snap("protection-found");
+    if ((await page.locator(".band [data-fix-all]").count()) > 0) {
+      await page.locator(".band [data-fix-all]").click();
+      await page.waitForSelector(".dialog");
+      await snap("fix-ask");
+      await page.locator(".dialog .btn.primary").click();
+      await page.waitForSelector('.activity-row[data-activity="fix"]');
+      await page.waitForTimeout(700);
+      await snap("fixing");
+      await page.waitForSelector('.activity-row[data-activity="fix"]', { state: "detached", timeout: 120_000 });
+      await page.waitForTimeout(500);
+      await snap("protection-fixed");
+    }
+  }
+}
+
+// Deleting goes on in the corner while everything else stays usable.
+if (want("deleting") && !real) {
+  await nav("files");
+  await page.waitForSelector(".row.tall", { timeout: 180_000 });
+  // "Select all" is offered for one kind of file at a time.
+  await page.locator(".chip").nth(1).click();
+  await page.locator("[data-select-all]").click();
+  await page.locator(".chip").nth(2).click();
+  await page.locator("[data-select-all]").click();
+  await page.locator(".selbar-delete").click();
+  await page.waitForSelector(".dialog");
+  await page.locator(".dialog .btn.danger").click();
+  await page.waitForSelector('.activity-row[data-activity="delete"]');
+  await page.waitForTimeout(2600);
+  await nav("health");
+  await page.waitForTimeout(500);
+  await snap("deleting");
+  await page.waitForSelector('.activity-row[data-activity="delete"]', { state: "detached", timeout: 240_000 });
 }
 
 // A second disk: pick it in the sidebar, wait for its scan.

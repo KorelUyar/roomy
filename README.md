@@ -2,13 +2,14 @@
 
 **See how your computer is doing, what fills its disk, and what should not be on it.**
 
-Roomy opens with a check-up: free space, memory, processor, battery and the drive at a glance, a
-malware scan with the signatures your system already trusts, and a look for software nobody asked
-for. Behind it is everything on your disks sorted by size: tick what you no longer need, press
-*Delete*, done. For macOS and Windows.
+Roomy opens with the health of your computer as one number: 100 minus what is wrong, with every
+missing point named. Behind it is a malware scan with the signatures your system already trusts,
+a report with one button that fixes what it found, and everything on your disks sorted by size:
+tick what you no longer need, press *Delete*, and carry on while it is deleted in the background.
+For macOS and Windows.
 
 <p align="center">
-  <img src="docs/screenshots/health.png" width="820" alt="Roomy's Health tab: storage, memory, processor and battery, and the result of the check-up">
+  <img src="docs/screenshots/health.png" width="820" alt="Roomy's Health tab: the health of the computer as one number, what takes points off, and the live readings">
 </p>
 
 ## Download
@@ -36,17 +37,26 @@ ask once before the first start:
 
 ### Health
 
-- **Four numbers, live:** free space, memory in use (with the memory pressure macOS reports), the
-  processor's load over the last minutes, and the battery with its charge cycles and how much of
-  its original capacity is left.
-- **Check now** runs the check-up: the security settings, what starts by itself, unwanted software
-  and, on a Mac, a quick malware scan. The result is one sentence ("3 things to look at") with
-  exactly those things listed under it; each line leads to the tab that deals with it.
+- **One number for the whole computer.** A ring with a score out of 100 and the word for it
+  (Excellent, Good, Fair, Poor). It is 100 minus what is wrong, and every point that is taken off
+  stands right under it with its reason: "Unwanted software, 2 programs nobody asked for, −16".
+  Nothing is hidden in the number. The weights are a judgement: what loses data or lets someone
+  in costs most (a file that matches a malware signature, a failing drive), what merely slows
+  things down costs little, and what is a matter of taste (apps that came with a PC) costs
+  nothing. "Excellent" is only for a list with nothing on it, after a check-up that ran to its
+  end. Until then there is no number at all.
+- **Live.** Free space, memory in use (with the memory pressure macOS reports), the processor's
+  load over the last minutes and whether heat is slowing it down, the battery with its charge
+  cycles and remaining capacity, and what goes over the network. Memory pressure, heat and a
+  nearly full disk change the score as they happen.
+- **The check-up runs by itself** when Roomy starts: security settings, what starts by itself,
+  unwanted software and, on a Mac, a quick malware scan. **Fix N things** deals with everything
+  Roomy can do itself (see Protection).
 - **The drive's own verdict** (S.M.A.R.T.), what could be cleaned up, and apps you have not opened
   in half a year.
-- **Using the most memory:** the apps that hold the most right now, and with one switch the
-  programs in the background too. Apps can be asked to quit from there (the polite way: they may
-  still ask you to save).
+- **Using the most:** the apps that hold the most memory or keep the processor busiest right now,
+  and with one switch the programs in the background too. Apps can be asked to quit from there
+  (the polite way: they may still ask you to save).
 
 <p align="center">
   <img src="docs/screenshots/health-memory.png" width="410" alt="The rest of the check-up and the apps using the most memory">
@@ -65,7 +75,7 @@ ask once before the first start:
 </p>
 <p align="center">
   <img src="docs/screenshots/folders.png" width="410" alt="Folders with their sizes">
-  <img src="docs/screenshots/delete.png" width="410" alt="Delete confirmation">
+  <img src="docs/screenshots/disks.png" width="410" alt="A second disk selected in the sidebar">
 </p>
 
 - **Storage** — how much is free, what uses the rest, and the four places where cleaning up pays
@@ -82,22 +92,49 @@ ask once before the first start:
 
 Selections carry across the tabs. One bar at the bottom shows how much you picked.
 
+**Fast on purpose.** *Clean up 32 GB…* on the Cleanup tab takes everything safe in one go. Shift
+selects a whole stretch of rows; *Select all* takes every file of one kind. And nothing has to be
+waited for: after *Delete* the dialog closes, the rows are gone from the lists, and a ring in the
+bottom left corner counts up to 100% while you carry on.
+
+<p align="center">
+  <img src="docs/screenshots/deleting.png" width="410" alt="Deleting in the background: a ring with a trash can and the percentage in the corner">
+  <img src="docs/screenshots/delete.png" width="410" alt="Delete confirmation">
+</p>
+
 ### Protection
 
 <p align="center">
-  <img src="docs/screenshots/protection.png" width="410" alt="Protection: the result of a malware scan and the system's protections">
-  <img src="docs/screenshots/protection-threats.png" width="410" alt="Protection: what a scan found, with the test file every scanner knows">
+  <img src="docs/screenshots/protection.png" width="410" alt="Protection: what a deep scan found, with a button for each and one for all">
+  <img src="docs/screenshots/fix-ask.png" width="410" alt="The question before everything is fixed: every line says what will happen to it">
 </p>
 
+One scan, one report, one button.
+
+- **Scan** (seconds) looks for malware where it usually sits, for known unwanted software, for
+  startup entries that are left over or start from an odd place, and at the security settings.
+  **Deep scan** (minutes) reads your whole home folder and every app.
+- **The report** leads with the answer about malware ("No malware found" or "2 files match a
+  malware signature") and lists everything else under it, each with its own button: *Move to
+  Trash*, *Remove*, *Quit*, *Switch off*, *Open settings*. A match inside an app is about the
+  whole app: the line says so, and its button asks before the app is quit and moved to the Trash.
+- **Fix N things** does everything Roomy can do by itself and take back, after one question in
+  which every line says what will happen to it and can be unticked. Files and apps go to the
+  Trash, running ones are quit first, startup entries are only switched off. Afterwards Roomy
+  looks again, and only what is really gone counts as fixed.
+  - What cannot be taken back starts out unticked: an app that came with a PC is removed for
+    good, so it is yours to tick.
+  - What needs a window of the system (a setting, an uninstaller) stays on the list with the
+    button that opens it.
+- **Findings are remembered.** What a deep scan found and you did not remove is looked at
+  again at every start, wherever it is, so it cannot disappear behind a quick scan.
 - **Malware scan.** Roomy has no signatures of its own and does not pretend to.
   - On a **Mac** it reads Apple's XProtect signatures from your system (the rules macOS itself
-    applies when a download is first opened) and checks the files that are already there. *Quick*
-    looks where malware usually sits: the programs of every app, downloads, the desktop and
-    everything that starts by itself; it takes seconds. *Full* reads your whole home folder and
-    every app; a few minutes. A file that matches a signature can be shown in Finder or moved to
-    the Trash.
-  - On **Windows** it asks Microsoft Defender to scan and shows what Defender found and dealt
-    with.
+    applies when a download is first opened) and checks the files that are already there.
+  - On **Windows** it asks Microsoft Defender to scan and shows what Defender found: what it
+    dealt with, and what is still waiting. Removing is Defender's too, and it is all or
+    nothing (its command takes no name), so Roomy offers it as one line and never as a button
+    per file that would do more than it says. Windows asks for an administrator first.
 - **Security settings.** Is the disk encrypted, the firewall on, are updates installed
   automatically? On macOS also Gatekeeper, System Integrity Protection, automatic login and Remote
   Login; on Windows also Microsoft Defender, User Account Control, SmartScreen and Remote Desktop.
@@ -131,9 +168,7 @@ The list of unwanted software is short and conservative
   <img src="docs/screenshots/health-windows.png" width="410" alt="The Health tab on Windows">
   <img src="docs/screenshots/protection-windows.png" width="410" alt="Protection on Windows, with Microsoft Defender">
 </p>
-<p align="center">
-  <img src="docs/screenshots/disks.png" width="410" alt="A second disk selected in the sidebar">
-</p>
+
 
 The screenshots show sample data.
 
@@ -149,8 +184,10 @@ The screenshots show sample data.
   only what is on it can be selected.
 - **Scans only look.** The check-up, the malware scan and the Bloat Scanner change nothing. A
   malware scan reads files and nothing else: it follows no links, stays on the disk it started
-  on, and leaves network and cloud drives alone. Removing what it found is a separate step through
-  the same dialog as every other delete. Roomy can quit only the processes a scan reported, and
+  on, and leaves network and cloud drives alone. Fixing is a separate step that you start: a
+  button in a row, or *Fix N things* with its question first. It goes the same guarded way as
+  every other delete (the Trash), and what cannot be put back is never part of "all" unless you
+  tick it. Roomy can quit only the processes a scan reported, and
   switch off only startup entries of your own account (on macOS the entry goes to the Trash, on
   Windows it is disabled the way Task Manager does it). Everything that needs an administrator is
   opened in the system settings instead.
@@ -210,7 +247,7 @@ npm run build && npx vite preview --port 4173 &
 open "http://localhost:4173/?bridge=http://127.0.0.1:4599&token=$ROOMY_TOKEN"   # this computer
 open "http://localhost:4173/"                                                    # sample data
 
-node scripts/e2e.mjs                         # real UI + real backend: delete, language, disks, check-up, malware scan
+node scripts/e2e.mjs                         # real UI + real backend: delete, language, disks, check-up, malware scan and fix; fix all on sample data
 node scripts/shots.mjs --out docs/screenshots # the screenshots above
 ```
 
@@ -224,7 +261,11 @@ data on the command line.
 - Network drives are not scanned.
 - Startup items that belong to all users can be found but not switched off from within Roomy.
 - The malware scan is a check on demand, not a guard in the background, and it knows what Apple's
-  or Microsoft's signatures know. On Windows Roomy only shows what Microsoft Defender found.
+  or Microsoft's signatures know. On Windows the scanning and the removing are Microsoft Defender's.
+- On Windows a classic program is removed by its own uninstaller, which Roomy opens; it is not
+  part of *Fix N things*.
+- Having Microsoft Defender remove a threat is built on its documented commands and has not yet
+  been tried against a real detection.
 - No duplicate finder.
 
 ## Licence

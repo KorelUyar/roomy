@@ -60,6 +60,12 @@ pub struct Health {
     pub swap_used: u64,
     /// "normal" | "warn" | "critical" | "unknown"
     pub pressure: &'static str,
+    /// What the system says about heat: "normal" | "fair" | "serious" | "critical" | "unknown".
+    /// From "serious" on it slows the processor down to cool off.
+    pub thermal: &'static str,
+    /// What goes over the network right now, bytes per second.
+    pub net_down: u64,
+    pub net_up: u64,
     /// Seconds since the computer was started.
     pub uptime: u64,
     pub battery: Option<Battery>,
@@ -79,12 +85,50 @@ struct Slow {
 struct State {
     sys: System,
     slow: Option<(Instant, Slow)>,
+    /// None where the system does not hand its network counters out.
+    networks: Option<sysinfo::Networks>,
+    /// When the network counters were last read, and the rates that gave.
+    net_at: Instant,
+    net: (u64, u64),
+}
+
+/// Cables and Wi-Fi, not the tunnels and bridges that carry the same bytes a second time.
+fn real_interface(name: &str) -> bool {
+    let name = name.to_lowercase();
+    let loopback = name == "lo" || name.starts_with("lo0") || name.contains("loopback");
+    let inner = ["utun", "awdl", "llw", "bridge", "gif", "stf", "anpi", "ap", "vmenet", "vmnet", "veth", "docker", "pktap"];
+    !loopback && !inner.iter().any(|prefix| name.starts_with(prefix))
+}
+
+/// Bytes per second down and up since the last look.
+fn network(state: &mut State) -> (u64, u64) {
+    let elapsed = state.net_at.elapsed().as_secs_f64();
+    // Asked twice in the same moment: the last answer still stands.
+    if elapsed < 0.5 {
+        return state.net;
+    }
+    let Some(networks) = state.networks.as_mut() else {
+        return (0, 0);
+    };
+    networks.refresh(true);
+    state.net_at = Instant::now();
+    let (mut down, mut up) = (0u64, 0u64);
+    for (name, data) in networks.iter() {
+        if real_interface(&name.to_string_lossy()) {
+            down += data.received();
+            up += data.transmitted();
+        }
+    }
+    state.net = ((down as f64 / elapsed) as u64, (up as f64 / elapsed) as u64);
+    state.net
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
 
 /// Apps and background programs together; the interface shows a handful of either.
-const TOP: usize = 14;
+const TOP: usize = 12;
+/// …and the busiest ones on top of those, so the list can also be read by processor.
+const TOP_BUSY: usize = 8;
 
 /// Is this a program a person started and knows, rather than part of the system?
 fn known_program(exe: &Path) -> bool {
@@ -189,7 +233,15 @@ fn consumers(sys: &System, cores: usize) -> Vec<Consumer> {
     }
     let mut list: Vec<(Consumer, Vec<(u32, u64)>)> = groups.into_values().collect();
     list.sort_by(|a, b| b.0.memory.cmp(&a.0.memory));
-    list.truncate(TOP);
+    // The biggest by memory, and whoever keeps the processor busy even if small.
+    let mut busiest: Vec<usize> = (0..list.len()).collect();
+    busiest.sort_by(|a, b| list[*b].0.cpu.partial_cmp(&list[*a].0.cpu).unwrap_or(std::cmp::Ordering::Equal));
+    let keep: std::collections::HashSet<usize> = (0..list.len().min(TOP)).chain(busiest.into_iter().take(TOP_BUSY)).collect();
+    let mut index = 0;
+    list.retain(|_| {
+        index += 1;
+        keep.contains(&(index - 1))
+    });
     // Only what is shown, and only apps that may be asked, can be quit afterwards.
     crate::quit::allow(
         "health",
@@ -207,6 +259,7 @@ pub fn snapshot() -> Health {
         let Ok(mut sys) = System::new() else {
             return Health {
                 pressure: "unknown",
+                thermal: "unknown",
                 disk_health: "unknown",
                 ..Default::default()
             };
@@ -216,7 +269,13 @@ pub fn snapshot() -> Health {
         sys.refresh_cpu_usage();
         sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_cpu());
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-        *guard = Some(State { sys, slow: None });
+        *guard = Some(State {
+            sys,
+            slow: None,
+            networks: sysinfo::Networks::new_with_refreshed_list().ok(),
+            net_at: Instant::now(),
+            net: (0, 0),
+        });
     }
     let state = guard.as_mut().expect("just set");
 
@@ -233,6 +292,7 @@ pub fn snapshot() -> Health {
         state.slow = Some((Instant::now(), slow()));
     }
     let slow = state.slow.as_ref().map(|(_, s)| s.clone()).unwrap_or_default();
+    let (net_down, net_up) = network(state);
 
     let sys = &state.sys;
     let cores = sys.cpus().len();
@@ -249,6 +309,9 @@ pub fn snapshot() -> Health {
         memory_available: available,
         swap_used: sys.used_swap(),
         pressure: pressure(total, available),
+        thermal: thermal(),
+        net_down,
+        net_up,
         uptime: System::uptime().unwrap_or(0),
         battery: slow.battery,
         disk_health: if slow.disk_health.is_empty() { "unknown" } else { slow.disk_health },
@@ -291,6 +354,29 @@ pub fn quit_apps(pids: &[u32]) -> usize {
 // ---------------------------------------------------------------------------
 // macOS
 // ---------------------------------------------------------------------------
+
+/// The system's own word on heat (the same one apps get to slow themselves down).
+#[cfg(target_os = "macos")]
+fn thermal() -> &'static str {
+    use objc2_foundation::{NSProcessInfo, NSProcessInfoThermalState};
+    let state = NSProcessInfo::processInfo().thermalState();
+    if state == NSProcessInfoThermalState::Nominal {
+        "normal"
+    } else if state == NSProcessInfoThermalState::Fair {
+        "fair"
+    } else if state == NSProcessInfoThermalState::Serious {
+        "serious"
+    } else if state == NSProcessInfoThermalState::Critical {
+        "critical"
+    } else {
+        "unknown"
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn thermal() -> &'static str {
+    "unknown"
+}
 
 #[cfg(target_os = "macos")]
 fn pressure(_total: u64, _available: u64) -> &'static str {

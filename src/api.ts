@@ -261,6 +261,11 @@ export interface Health {
   memoryAvailable: number;
   swapUsed: number;
   pressure: "normal" | "warn" | "critical" | "unknown";
+  /** What the system says about heat. From "serious" on it slows the processor down. */
+  thermal: "normal" | "fair" | "serious" | "critical" | "unknown";
+  /** Bytes per second over the network right now. */
+  netDown: number;
+  netUp: number;
   /** Seconds since the computer was started. */
   uptime: number;
   battery: Battery | null;
@@ -280,6 +285,8 @@ export interface MalwareEngine {
 }
 
 export interface Threat {
+  /** Microsoft Defender's number for it; empty on a Mac. */
+  id: string;
   path: string;
   name: string;
   signature: string;
@@ -291,6 +298,8 @@ export interface Threat {
   handled: boolean;
   /** The harmless test file every scanner is expected to find. */
   test: boolean;
+  /** Processes running from it right now. */
+  pids: number[];
 }
 
 export type ScanScope = "quick" | "full";
@@ -413,8 +422,12 @@ export const api = {
   openSettings: (id: string) => transport.call<null>("open_settings", { id }),
   health: () => transport.call<Health>("health"),
   healthQuit: (pids: number[]) => transport.call<number>("health_quit", { pids }),
-  malwareStart: (scope: ScanScope) => transport.call<null>("malware_start", { scope }),
+  /** `recheck`: files an earlier run found and that were not removed. They are looked at again wherever they are. */
+  malwareStart: (scope: ScanScope, recheck: string[] = []) => transport.call<null>("malware_start", { scope, recheck }),
   malwareStatus: () => transport.call<MalwareStatus>("malware_status"),
   malwareCancel: () => transport.call<null>("malware_cancel"),
+  malwareQuit: (pids: number[]) => transport.call<number>("malware_quit", { pids }),
+  /** Windows: has Microsoft Defender remove what it found. Answers with the status afterwards. */
+  malwareClean: () => transport.call<MalwareStatus>("malware_clean"),
   iconUrl: (path: string, size: number) => transport.iconUrl(path, size),
 };

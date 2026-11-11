@@ -36,6 +36,9 @@ export interface MockOptions {
 /** Processor load of the last minutes on the sample computer, oldest first. */
 export const SAMPLE_CPU = [9, 11, 10, 14, 22, 31, 27, 18, 13, 12, 15, 13, 11, 12, 19, 24, 21, 16, 12, 10, 11, 13, 17, 15, 12, 11, 14, 26, 35, 29, 20, 15, 13, 12, 11, 13, 16, 14, 12, 13];
 
+/** What came in over the network on the sample computer, bytes per second, oldest first. */
+export const SAMPLE_NET = SAMPLE_CPU.map((v, i) => Math.round((40 + ((i * 53) % 90) + (v > 20 ? v * 60 : v * 6)) * 1024));
+
 const GB = 1000 ** 3;
 const MB = 1000 ** 2;
 const DAY = 86400;
@@ -678,6 +681,9 @@ export function createMock(opts: MockOptions): Transport {
       memoryAvailable: total - used,
       swapUsed: 0,
       pressure: "normal",
+      thermal: win ? "unknown" : "normal",
+      netDown: Math.round(SAMPLE_NET[SAMPLE_NET.length - 1] * (1 + (still ? 0 : Math.sin(s * 1.7) * 0.5))),
+      netUp: Math.round(38 * 1024 * (1 + (still ? 0 : Math.sin(s * 0.8 + 1) * 0.4))),
       uptime: 3 * DAY + 5 * 3600 + Math.round(s),
       battery: win
         ? { percent: 64, charging: true, plugged: true, cycles: null, maxCapacity: 88, condition: "good" }
@@ -693,10 +699,10 @@ export function createMock(opts: MockOptions): Transport {
     ? { engine: "defender", available: true, version: "1.421.118.0", rules: 0, updated: now - DAY }
     : { engine: "xprotect", available: true, version: "5372", rules: 586, updated: now - 9 * DAY };
   let threats: Threat[] = win
-    ? [{ path: `${dl}\\free-video-converter-setup.exe`, name: "free-video-converter-setup.exe", signature: "PUA:Win32/InstallCore", size: 0, modified: 0, container: null, handled: true, test: false }]
+    ? [{ id: "{4F1C}", path: `${dl}\\free-video-converter-setup.exe`, name: "free-video-converter-setup.exe", signature: "PUA:Win32/InstallCore", size: 0, modified: 0, container: null, handled: false, test: false, pids: [] }]
     : [
-        { path: `${homePath}/Library/Application Support/SearchMine/SearchMine.app/Contents/MacOS/SearchMine`, name: "SearchMine", signature: "MACOS.ADLOAD", size: Math.round(3.1 * MB), modified: now - 41 * DAY, container: `${homePath}/Library/Application Support/SearchMine/SearchMine.app`, handled: false, test: false },
-        { path: `${dl}/eicar.com`, name: "eicar.com", signature: "EICAR test file", size: 68, modified: now - 2 * DAY, container: null, handled: false, test: true },
+        { path: `${homePath}/Library/Application Support/SearchMine/SearchMine.app/Contents/MacOS/SearchMine`, name: "SearchMine", signature: "MACOS.ADLOAD", size: Math.round(3.1 * MB), modified: now - 41 * DAY, container: `${homePath}/Library/Application Support/SearchMine/SearchMine.app`, handled: false, test: false, id: "", pids: [640] },
+        { path: `${dl}/eicar.com`, name: "eicar.com", signature: "EICAR test file", size: 68, modified: now - 2 * DAY, container: null, handled: false, test: true, id: "", pids: [] },
       ];
   let malware: { started: number; scope: ScanScope; stopped: number | null } | null = null;
   const fast = !!opts.shotsDir || new URLSearchParams(location.search).has("fast");
@@ -731,7 +737,7 @@ export function createMock(opts: MockOptions): Transport {
 
   const meta: AppMeta = {
     platform: opts.platform,
-    version: "0.3.0",
+    version: "0.4.0",
     home: homePath,
     root,
     locale: opts.locale,
@@ -792,6 +798,12 @@ export function createMock(opts: MockOptions): Transport {
     malware_cancel: () => {
       if (malware && malwareStatus().state === "scanning") malware.stopped = Date.now();
       return null;
+    },
+    malware_quit: (a) => (a.pids as number[]).length,
+    // Microsoft Defender removes what it found.
+    malware_clean: () => {
+      threats = threats.map((x) => ({ ...x, handled: true }));
+      return malwareStatus();
     },
     list_apps: () => [...apps].sort((a, b) => b.size - a.size),
     app_related: (a) => (win ? [] : related(a.path)),

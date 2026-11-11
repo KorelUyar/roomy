@@ -3,7 +3,7 @@ import { api, type Entry, type Kind } from "../api";
 import { formatAgo, formatBytes, shortPath } from "../format";
 import { formatCount, t } from "../i18n";
 import { Icon } from "../icons";
-import { toggleSelect, useStore, type SelItem } from "../store";
+import { setSelected, tickRow, useStore, type SelItem } from "../store";
 import { Checkbox, Empty, FileIcon, Header, Skeleton, SizeBar } from "../ui";
 
 type Filter = "all" | "video" | "image" | "audio" | "archive" | "diskimage" | "document" | "other";
@@ -37,6 +37,7 @@ export function FilesView() {
   const diskRoot = useStore((s) => s.diskRoot);
   const scanned = useStore((s) => s.overview !== null);
   const selection = useStore((s) => s.selection);
+  const pending = useStore((s) => s.pending);
   const platform = useStore((s) => s.meta?.platform);
   const [files, setFiles] = useState<Entry[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -53,12 +54,15 @@ export function FilesView() {
     };
   }, [version, scanned, diskRoot]);
 
-  const base = useMemo(() => (files ?? []).filter((f) => appData || !f.appData), [files, appData]);
+  // What is on its way out is gone from the list at once.
+  const base = useMemo(() => (files ?? []).filter((f) => (appData || !f.appData) && !pending.has(f.path)), [files, appData, pending]);
   const present = useMemo(() => new Set(base.map((f) => bucket(f.kind))), [base]);
   const shown = useMemo(() => base.filter((f) => filter === "all" || bucket(f.kind) === filter), [base, filter]);
   const total = shown.reduce((s, f) => s + f.size, 0);
   const max = shown[0]?.size ?? 0;
   const hasAppData = (files ?? []).some((f) => f.appData);
+  const rows = useMemo(() => shown.map(entryToSel), [shown]);
+  const allTicked = rows.length > 0 && rows.every((r) => selection.has(r.path));
 
   return (
     <>
@@ -72,6 +76,12 @@ export function FilesView() {
             <i />
             {t("files.appData")}
           </label>
+        )}
+        {/* Only for a kind that was picked on purpose: "all" would take the photo library along. */}
+        {rows.length > 0 && filter !== "all" && (
+          <button type="button" className="btn" data-select-all onClick={() => setSelected(rows, !allTicked)}>
+            {t(allTicked ? "sel.clear" : "sel.all")}
+          </button>
         )}
       </Header>
 
@@ -103,11 +113,11 @@ export function FilesView() {
           <Empty icon="file" title={t("files.empty")} />
         ) : (
           <div className="list">
-            {shown.slice(0, limit).map((file) => {
+            {shown.slice(0, limit).map((file, index) => {
               const selected = selection.has(file.path);
               return (
-                <div key={file.path} className={`row tall clickable${selected ? " selected" : ""}`} onClick={() => toggleSelect(entryToSel(file))}>
-                  <Checkbox checked={selected} onChange={() => toggleSelect(entryToSel(file))} />
+                <div key={file.path} className={`row tall clickable${selected ? " selected" : ""}`} onClick={(e) => tickRow("files", rows.slice(0, limit), index, e.shiftKey)}>
+                  <Checkbox checked={selected} onChange={(shift) => tickRow("files", rows.slice(0, limit), index, shift)} />
                   <FileIcon path={file.path} kind={file.kind} size={34} />
                   <span className="row-main">
                     <span className="row-title">{file.name}</span>

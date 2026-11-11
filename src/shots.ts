@@ -35,14 +35,17 @@ export async function runShots() {
     await until(() => getState().apps !== null && getState().cleanup !== null);
     await shot("1-storage");
     navigate("health");
-    // Twice: the processor's load is the difference between two looks.
+    // The check-up starts by itself; a few looks at the numbers so the charts have something to draw.
+    for (let i = 0; i < 4; i++) {
+      await refreshHealth();
+      await sleep(900);
+    }
+    await until(() => getState().check.at !== null && !getState().check.running);
     await refreshHealth();
-    await sleep(1200);
+    await shot("2-health");
+    await checkAll("quick", true);
     await refreshHealth();
-    await shot("2-health-before");
-    await checkAll();
-    await refreshHealth();
-    await shot("3-health");
+    await shot("3-health-again");
     navigate("apps");
     await shot("4-apps");
     navigate("files");

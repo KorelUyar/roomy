@@ -369,12 +369,17 @@ html[data-platform="macos"] .sidebar-top {
   color: var(--text);
 }
 
+/* Clipped, and not scrollable even by accident: the selection bar waits below
+   the edge, and a focus or a "scroll into view" must never push the whole
+   window content up to show it. */
 .main {
   position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  overflow: clip;
 }
 
 /* The title always starts at the same height, with or without a line under it. */
@@ -529,6 +534,14 @@ html[data-platform="macos"] .sidebar-top {
   width: 104px;
 }
 
+/* What a row starts with (an icon, a sign of state): one slot for all, so names line up. */
+.lead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+}
+
 /* One line: what was looked at, and what was found. */
 .row.line {
   min-height: 46px;
@@ -558,12 +571,19 @@ html[data-platform="macos"] .sidebar-top {
   gap: 16px;
 }
 
-.section-tools .section {
+.section-tools {
   margin-top: 34px;
 }
 
-.section-tools .switch {
-  margin-bottom: 10px;
+.section-tools .section {
+  margin-top: 0;
+}
+
+.section-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
 }
 
 .icon-btn {
@@ -961,6 +981,12 @@ html[data-platform="macos"] .sidebar-top {
   color: var(--warn);
 }
 
+/* Only for what matches a malware signature. */
+.tag.bad {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
 /* "Running": a dot and a word, no box. */
 .tag.live {
   padding: 0;
@@ -1241,7 +1267,7 @@ html[data-platform="macos"] .sidebar-top {
 }
 .band.warn {
   --tint: var(--warn-fill);
-  background: color-mix(in srgb, var(--tint) 10%, var(--surface));
+  background: color-mix(in srgb, var(--tint) 7%, var(--surface));
 }
 .band.bad {
   --tint: var(--danger-solid);
@@ -1326,7 +1352,46 @@ html[data-platform="macos"] .sidebar-top {
 .band-actions {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+/* Several buttons: a line of their own, under the words they belong to. */
+.band.below .band-actions {
+  flex: 1 0 100%;
+  justify-content: flex-start;
+  margin-top: 12px;
+  padding-left: 64px;
+}
+
+.band.below .band-actions .needs-you {
+  margin-left: 6px;
+}
+
+/* How an answer came about: said, but not loudly. */
+.band-sub.quiet {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* A button that reads as part of a sentence. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 550;
+}
+
+.link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.link:disabled {
+  opacity: 0.5;
 }
 
 .band-foot {
@@ -1467,7 +1532,238 @@ html[data-platform="macos"] .sidebar-top {
   animation: settle 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
 }
 
+/* ------------------------------------------------------------------ rings */
+
+/* A ring that fills up (how far something is) or keeps turning (it is going on). */
+.ring {
+  --ring: var(--accent);
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+/* Only the ring's own drawing: an icon inside it stays in the middle. */
+.ring > svg {
+  position: absolute;
+  inset: 0;
+}
+
+.ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ring) 17%, transparent);
+}
+
+.ring-fill {
+  fill: none;
+  stroke: var(--ring);
+  stroke-linecap: round;
+  transition:
+    stroke-dasharray 0.5s ease,
+    stroke 0.3s;
+}
+
+.ring.turning > svg {
+  animation: spin 1s linear infinite;
+}
+
+.ring.danger,
+.ring.poor {
+  --ring: var(--danger-solid);
+}
+.ring.ok,
+.ring.great,
+.ring.good {
+  --ring: var(--ok-solid);
+}
+.ring.fair {
+  --ring: var(--warn-fill);
+}
+
+.ring-in {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  color: var(--text-2);
+}
+
+/* What goes on in the background, in the corner of the window. */
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+  /* Makes room for itself instead of pushing the disks up in one jump. */
+  animation: open 0.26s ease-out;
+}
+
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 5px 4px 5px 8px;
+}
+
+.activity-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-text b {
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.activity-text span {
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-row[data-activity="delete"] .ring-in {
+  color: var(--danger);
+}
+
+.activity-row.done .ring-in {
+  color: var(--ok);
+}
+
 /* ----------------------------------------------------------------- health */
+
+/* The health of the whole computer: one number in a ring, the word for it,
+   and every point that is missing with its reason. */
+.condition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 22px;
+  padding: 22px 24px;
+  border-radius: 20px;
+  background: var(--surface);
+  transition: background 0.4s;
+}
+
+.condition.great,
+.condition.good {
+  background: color-mix(in srgb, var(--ok-solid) 6%, var(--surface));
+}
+.condition.fair {
+  background: color-mix(in srgb, var(--warn-fill) 7%, var(--surface));
+}
+.condition.poor {
+  background: color-mix(in srgb, var(--danger-solid) 7%, var(--surface));
+}
+
+.condition .ring b {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+/* "of 100": the number is a score, not a percentage of anything. */
+.condition .ring small {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+
+.condition-text {
+  flex: 1;
+  min-width: 220px;
+}
+
+.condition-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+
+/* "These numbers are from this very moment." Not a state light: it has no state colour. */
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+.condition h2 {
+  margin: 2px 0 0;
+  font-size: 30px;
+  font-weight: 720;
+  letter-spacing: -0.028em;
+  line-height: 1.15;
+}
+
+.condition p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.condition-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Next to "Fix N things": what will be left for the user. */
+.needs-you {
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.condition-actions .needs-you {
+  margin-right: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .condition.great,
+  .condition.good {
+    background: color-mix(in srgb, var(--ok-solid) 5%, var(--surface));
+  }
+  .condition.fair,
+  .band.warn {
+    background: color-mix(in srgb, var(--warn-fill) 4%, var(--surface));
+  }
+  .condition.poor,
+  .band.bad {
+    background: color-mix(in srgb, var(--danger-solid) 6%, var(--surface));
+  }
+}
+
+/* How many points a thing takes off. */
+.band-item em {
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
 
 .vitals {
   display: grid;
@@ -1476,13 +1772,28 @@ html[data-platform="macos"] .sidebar-top {
   margin-top: 12px;
 }
 
-.vitals.three {
+.vitals[data-count="3"] {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* Five side by side need a little less air each. */
+.vitals[data-count="5"] {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vitals[data-count="5"] .vital {
+  padding: 14px 14px 13px;
+}
+
+.vitals[data-count="5"] .vital-value {
+  font-size: 20px;
+}
+
 @media (max-width: 1000px) {
-  .vitals {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .vitals,
+  .vitals[data-count="5"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -1622,7 +1933,7 @@ button.vital:hover .row-arrow {
 }
 
 .spark-area {
-  fill: color-mix(in srgb, var(--text-3) 12%, transparent);
+  fill: color-mix(in srgb, var(--text-3) 7%, transparent);
   stroke: none;
 }
 
@@ -2198,13 +2509,14 @@ button.seg:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
-  padding: 0 7px 0 12px;
-  border-radius: 12px;
-  background: var(--bg-elev);
+  height: 40px;
+  padding: 0 7px 0 14px;
+  border-radius: 13px;
+  background: var(--float);
+  color: #fff;
   box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.16),
-    0 0 0 0.5px var(--line-strong);
+    0 12px 30px rgba(0, 0, 0, 0.24),
+    0 0 0 0.5px rgba(255, 255, 255, 0.14);
   font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
@@ -2213,27 +2525,31 @@ button.seg:hover {
 }
 
 .toast > span {
-  padding-right: 6px;
+  padding-right: 8px;
 }
 
 .toast svg {
   flex: none;
-  color: var(--ok);
+  color: #5fd596;
 }
 
 .toast.warn svg {
-  color: var(--warn);
+  color: #ffc15e;
 }
 
 .toast button {
-  height: 26px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 11px;
   border: 0;
-  border-radius: 7px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
   font-size: 12px;
   font-weight: 600;
+}
+
+.toast button:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .backdrop {
@@ -2276,7 +2592,7 @@ button.seg:hover {
 
 .dialog-list {
   min-height: 0;
-  max-height: 236px;
+  max-height: 284px;
   margin-top: 14px;
   overflow-y: auto;
   border-top: 1px solid var(--line);
@@ -2292,6 +2608,11 @@ button.seg:hover {
 
 .dialog-item + .dialog-item {
   border-top: 1px solid var(--line);
+}
+
+.dialog-does {
+  max-width: 230px;
+  text-align: right;
 }
 
 .dialog-item .row-title {
@@ -2337,26 +2658,52 @@ button.seg:hover {
   color: var(--text-2);
 }
 
+/* What will be done with one thing ("Move to Trash", "Switch off"). */
+.dialog-does {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* The fix question has two things to say per line (what, and what happens to it): it gets more room. */
+.dialog.wide {
+  width: 580px;
+}
+
+/* A line of the fix question is a tick box as a whole. */
+.dialog-item[data-fix-item] {
+  cursor: default;
+}
+
+.dialog-item.off .row-main,
+.dialog-item.off .dialog-does,
+.dialog-item.off .icon-img,
+.dialog-item.off .tile {
+  opacity: 0.5;
+}
+
+/* What cannot be taken back says so in the colour of a caution. */
+.dialog-does.for-good {
+  color: var(--warn);
+}
+
+/* "Dealt with" / "Not removed yet" beside one of Microsoft Defender's findings. */
+[data-list="defender"] .row-note {
+  width: auto;
+}
+
+.dialog-note {
+  margin: 12px 2px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
-}
-
-.dialog-progress {
-  height: 3px;
-  margin-top: 14px;
-  border-radius: 2px;
-  background: var(--track);
-  overflow: hidden;
-}
-
-.dialog-progress i {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s;
 }
 
 /* -------------------------------------------------------------- animation */
@@ -2433,6 +2780,16 @@ button.seg:hover {
   }
   to {
     stroke-dashoffset: 0;
+  }
+}
+
+@keyframes open {
+  from {
+    max-height: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 160px;
   }
 }
 

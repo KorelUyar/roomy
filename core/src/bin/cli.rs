@@ -223,6 +223,10 @@ fn main() {
             let h = health::snapshot();
             println!("{} · {} · {} ({} cores)", h.host, h.os, h.cpu_brand, h.cores);
             println!("processor {:.0} %   memory {} of {} used ({} available, pressure {})   swap {}", h.cpu, human(h.memory_used), human(h.memory_total), human(h.memory_available), h.pressure, human(h.swap_used));
+            // The network rate is the difference between two looks: take the second one a moment later.
+            std::thread::sleep(std::time::Duration::from_millis(1200));
+            let later = roomy_core::health::snapshot();
+            println!("thermal {}   network down {}/s  up {}/s", later.thermal, human(later.net_down), human(later.net_up));
             println!("up for {:.1} days   system disk: {}", h.uptime as f64 / 86400.0, h.disk_health);
             match &h.battery {
                 Some(b) => println!("battery: {:?} %  charging {}  plugged {}  cycles {:?}  holds {:?} %  condition {}", b.percent, b.charging, b.plugged, b.cycles, b.max_capacity, b.condition),
@@ -237,7 +241,7 @@ fn main() {
             let info = malware::info();
             println!("engine: {} (available {}), signatures {} version {}, updated {}", info.engine, info.available, info.rules, info.version, info.updated);
             let scope = if args.get(1).map(String::as_str) == Some("full") { "full" } else { "quick" };
-            if let Err(e) = malware::start(scope) {
+            if let Err(e) = malware::start(scope, &[]) {
                 eprintln!("{e}");
                 std::process::exit(1);
             }
@@ -394,6 +398,7 @@ fn main() {
             }
             let h = health::snapshot();
             println!("health: {} · {} · {} cores · processor {:.0} % · memory {} of {} · pressure {} · disk {} · battery {}", h.os, h.cpu_brand, h.cores, h.cpu, human(h.memory_used), human(h.memory_total), h.pressure, h.disk_health, if h.battery.is_some() { "yes" } else { "none" });
+            println!("        thermal {}", h.thermal);
             assert!(h.cores > 0 && h.memory_total > 0, "no health data");
             // Which engine there is (no scan here: on Windows that is Defender's business and takes minutes).
             let engine = malware::info();

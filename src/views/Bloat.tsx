@@ -3,7 +3,7 @@ import { api, type StartupItem, type Unwanted } from "../api";
 import { formatBytes, shortPath } from "../format";
 import { formatCount, t } from "../i18n";
 import { Icon } from "../icons";
-import { refreshBloat, refreshLists, scanBloat, setSelected, setState, toast, useStore, type SelItem } from "../store";
+import { busyNow, findIssue, fixIssue, refreshBloat, refreshLists, scanBloat, setSelected, setState, toast, useStore, type SelItem } from "../store";
 import { FileIcon, Header } from "../ui";
 
 const STEPS = ["software", "startup", "processes"] as const;
@@ -41,6 +41,8 @@ function Intro({ busy }: { busy: boolean }) {
 function UnwantedRow({ item }: { item: Unwanted }) {
   const [busy, setBusy] = useState(false);
   const act = async (work: () => Promise<unknown>, done: string) => {
+    // Not while a check-up or a fix is rewriting this very list.
+    if (busyNow()) return;
     setBusy(true);
     try {
       await work();
@@ -68,7 +70,9 @@ function UnwantedRow({ item }: { item: Unwanted }) {
         })
         .catch((error) => toast(t("toast.error", { error: String(error) }), "warn"));
     } else if (item.removal === "package") {
-      void act(() => api.bloatRemovePackage(item.target), t("bloat.removed", { name: item.name }));
+      // Cannot be taken back, so it is asked first: the same question as on the Protection tab.
+      const issue = findIssue(`unwanted:${item.id}`);
+      if (issue) void fixIssue(issue);
     }
   };
 
@@ -79,9 +83,9 @@ function UnwantedRow({ item }: { item: Unwanted }) {
         <span className="row-title">
           {item.name}
           <span className="tag review">{t(`bloat.reason.${item.reason}`)}</span>
-          {item.running && <span className="tag live">{t("bloat.running")}</span>}
         </span>
-        {item.path && <span className="row-sub">{shortPath(item.path)}</span>}
+        {/* "Running" in plain words here: a green light next to "Adware" would say the wrong thing. */}
+        {(item.path || item.running) && <span className="row-sub">{[item.running ? t("bloat.running") : null, item.path ? shortPath(item.path) : null].filter(Boolean).join("  ·  ")}</span>}
       </span>
       {item.size > 0 && <span className="row-size">{formatBytes(item.size)}</span>}
       {item.running && (
@@ -114,6 +118,7 @@ function StartupRow({ item, reveal }: { item: StartupItem; reveal: string }) {
     .join("  ·  ");
 
   const disable = async () => {
+    if (busyNow()) return;
     setBusy(true);
     try {
       await api.bloatDisableStartup(item.id);
@@ -169,8 +174,12 @@ function StartupRow({ item, reveal }: { item: StartupItem; reveal: string }) {
 }
 
 export function BloatView() {
-  const report = useStore((s) => s.bloat);
-  const busy = useStore((s) => s.bloatBusy);
+  const loaded = useStore((s) => s.bloat);
+  const pending = useStore((s) => s.pending);
+  // The check-up looks at the same things: while it runs, this tab is scanning too.
+  const busy = useStore((s) => s.bloatBusy || s.check.running);
+  // What is on its way to the Trash is gone from the list at once.
+  const report = loaded && pending.size > 0 ? { ...loaded, unwanted: loaded.unwanted.filter((u) => !pending.has(u.target)) } : loaded;
   const platform = useStore((s) => s.meta?.platform);
   const [showAll, setShowAll] = useState(false);
   const windows = platform === "windows";

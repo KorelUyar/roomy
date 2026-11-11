@@ -16,7 +16,8 @@ export function Checkbox({
   mixed?: boolean;
   locked?: boolean;
   title?: string;
-  onChange?: () => void;
+  /** Called with whether Shift was held: then a whole stretch can be ticked. */
+  onChange?: (shift: boolean) => void;
 }) {
   if (locked) {
     return (
@@ -34,7 +35,7 @@ export function Checkbox({
       className={`check${checked || mixed ? " on" : ""}`}
       onClick={(e) => {
         e.stopPropagation();
-        onChange?.();
+        onChange?.(e.shiftKey);
       }}
     >
       {mixed ? <Icon name="minus" size={12} stroke={3} /> : checked ? <Icon name="check" size={12} stroke={3} /> : null}
@@ -175,8 +176,11 @@ export function StatusRow({
 }) {
   const body = (
     <>
-      <span className={`status ${icon ? "" : tone}`}>
-        <Icon name={icon ?? TONE_ICON[tone]} size={icon ? 17 : 15} stroke={icon ? 1.8 : 2.6} />
+      {/* The same slot as an app icon, so names line up across kinds of rows. */}
+      <span className="lead">
+        <span className={`status ${icon ? "" : tone}`}>
+          <Icon name={icon ?? TONE_ICON[tone]} size={icon ? 17 : 15} stroke={icon ? 1.8 : 2.6} />
+        </span>
       </span>
       <span className="row-main">
         <span className="row-title">{title}</span>
@@ -213,6 +217,7 @@ export function Band({
   actions,
   list,
   foot,
+  below,
 }: {
   tone: BandTone;
   icon: string;
@@ -223,10 +228,12 @@ export function Band({
   /** What the sentence counts, as rows right under it. */
   list?: ReactNode;
   foot?: ReactNode;
+  /** The buttons get a line of their own under the text (when there are several). */
+  below?: boolean;
 }) {
   const result = tone === "ok" || tone === "warn" || tone === "bad";
   return (
-    <section className={`band ${busy ? "idle" : tone}`}>
+    <section className={`band ${busy ? "idle" : tone}${below ? " below" : ""}`}>
       <span className="band-mark" key={busy ? "busy" : tone}>
         {busy ? (
           <span className="spinner" />
@@ -253,5 +260,25 @@ export function Band({
       {list && <div className="band-list">{list}</div>}
       {foot && <div className="band-foot">{foot}</div>}
     </section>
+  );
+}
+
+/**
+ * A ring that fills up. `value` 0–1 is how far; without a value an arc keeps
+ * turning (something is going on, how long is not known). What is inside
+ * (an icon, a number) is the caller's.
+ */
+export function Ring({ value, size = 32, stroke = 3, tone, children }: { value: number | null; size?: number; stroke?: number; tone?: string; children?: ReactNode }) {
+  const r = (size - stroke) / 2;
+  const around = 2 * Math.PI * r;
+  const share = value === null ? 0.28 : Math.max(0, Math.min(1, value));
+  return (
+    <span className={`ring${tone ? ` ${tone}` : ""}${value === null ? " turning" : ""}`} style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle className="ring-track" cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} />
+        <circle className="ring-fill" cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} strokeDasharray={`${around * share} ${around}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+      </svg>
+      <span className="ring-in">{children}</span>
+    </span>
   );
 }

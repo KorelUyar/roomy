@@ -3,7 +3,7 @@ import { TRASH_TOKEN, type CleanGroup, type CleanItem } from "../api";
 import { formatBytes } from "../format";
 import { formatCount, t } from "../i18n";
 import { Icon } from "../icons";
-import { emptyTrash, setSelected, toggleSelect, useStore, type SelItem } from "../store";
+import { emptyTrash, setSelected, setState, toggleSelect, useStore, type SelItem } from "../store";
 import { CLEAN_ICON } from "../theme";
 import { Checkbox, Empty, Header, Skeleton } from "../ui";
 
@@ -22,14 +22,25 @@ function sel(group: CleanGroup, item: CleanItem): SelItem {
 }
 
 export function CleanupView() {
-  const groups = useStore((s) => s.cleanup);
+  const loaded = useStore((s) => s.cleanup);
+  const pending = useStore((s) => s.pending);
   const selection = useStore((s) => s.selection);
+  // What is on its way out is gone from the list at once, and from the sums.
+  const groups =
+    loaded && pending.size > 0
+      ? loaded
+          .map((g) => {
+            const items = g.items.filter((i) => !pending.has(i.path));
+            return items.length === g.items.length ? g : { ...g, items, size: items.reduce((sum, i) => sum + i.size, 0) };
+          })
+          .filter((g) => g.items.length > 0)
+      : loaded;
   const platform = useStore((s) => s.meta?.platform);
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   const total = (groups ?? []).reduce((s, g) => s + g.size, 0);
   const safeItems = (groups ?? []).filter((g) => g.safety === "safe").flatMap((g) => g.items.map((i) => sel(g, i)));
-  const allSafeSelected = safeItems.length > 0 && safeItems.every((i) => selection.has(i.path));
+  const safeSize = safeItems.reduce((sum, i) => sum + i.size, 0);
 
   // Cache folders are named after bundle ids: show the app's name instead.
   const apps = useStore((s) => s.apps);
@@ -40,11 +51,20 @@ export function CleanupView() {
 
   return (
     <>
-      <Header title={t("nav.cleanup")} subtitle={groups && total > 0 ? t("cleanup.total", { size: formatBytes(total) }) : t("cleanup.subtitle")}>
-        {safeItems.length > 0 && (
-          <button type="button" className="btn" onClick={() => setSelected(safeItems, !allSafeSelected)}>
-            <Icon name="shield" size={14} />
-            {allSafeSelected ? t("sel.clear") : t("cleanup.selectSafe")}
+      <Header title={t("nav.cleanup")} subtitle={groups && total > 0 ? t("cleanup.found", { size: formatBytes(total), safe: formatBytes(safeSize) }) : t("cleanup.subtitle")}>
+        {/* The short way: everything safe, one question, gone. Once something is ticked, the bar below is the one way. */}
+        {safeItems.length > 0 && selection.size === 0 && (
+          <button
+            type="button"
+            className="btn primary"
+            data-clean
+            onClick={() => {
+              setSelected(safeItems, true);
+              setState({ confirmOpen: true });
+            }}
+          >
+            <Icon name="cleanup" size={14} />
+            {t("cleanup.clean", { size: formatBytes(safeSize) })}
           </button>
         )}
       </Header>
