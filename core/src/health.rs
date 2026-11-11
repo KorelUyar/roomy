@@ -127,7 +127,20 @@ fn consumers(sys: &System, cores: usize) -> Vec<Consumer> {
     let own_exe = std::env::current_exe().ok();
     let own_bundle = own_exe.as_deref().and_then(bundle_of);
     let mut groups: HashMap<String, (Consumer, Vec<(u32, u64)>)> = HashMap::new();
-    let own_pid = std::process::id();
+    let own_pid = sysinfo::Pid::from_u32(std::process::id());
+    // Roomy is not what one came to look at: neither itself nor what it started
+    // (on Windows its window is drawn by WebView2 processes of its own).
+    let ours = |process: &sysinfo::Process| {
+        let mut pid = Some(process.pid());
+        for _ in 0..8 {
+            match pid {
+                Some(p) if p == own_pid => return true,
+                Some(p) => pid = sys.process(p).and_then(|parent| parent.parent()),
+                None => return false,
+            }
+        }
+        false
+    };
     for process in sys.processes().values() {
         let memory = process.memory();
         if memory == 0 {
@@ -135,8 +148,7 @@ fn consumers(sys: &System, cores: usize) -> Vec<Consumer> {
         }
         let exe = process.exe().map(Path::to_path_buf);
         let bundle = exe.as_deref().and_then(bundle_of);
-        // Roomy is not what one came to look at.
-        if process.pid().as_u32() == own_pid || (bundle.is_some() && bundle == own_bundle) || (exe.is_some() && exe == own_exe) {
+        if ours(process) || (bundle.is_some() && bundle == own_bundle) || (exe.is_some() && exe == own_exe) {
             continue;
         }
         let (key, name, path) = match (&bundle, &exe) {
